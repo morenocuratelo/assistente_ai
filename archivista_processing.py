@@ -7,7 +7,7 @@ import shutil
 import sqlite3
 import json
 from datetime import datetime, timedelta
-from pantic import BaseModel, Field
+from pydantic import BaseModel, Field
 from typing import List, Optional
 
 # Import per l'estrazione granulare del testo
@@ -240,4 +240,3 @@ def scan_for_new_documents_periodic():
     except Exception as e:
         print(f"❌ Errore durante la scansione periodica: {e}")
         return f"Errore: {e}"
-

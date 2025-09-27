@@ -71,30 +71,15 @@ def get_category_choices():
             choices.append((full_id, full_description))
     return choices
 
-def get_structure_for_prompt(manual_filepath="Master_Indexing_Manual.md"):
-    """
-    Loads the detailed indexing manual from a file and formats it
-    for an LLM prompt.
-    """
-    try:
-        with open(manual_filepath, 'r', encoding='utf-8') as f:
-            manual_content = f.read()
-    except FileNotFoundError:
-        error_message = (
-            f"ERRORE CRITICO: Il file del manuale di indicizzazione '{manual_filepath}' non è stato trovato. "
-            "Assicurati che il file esista nella stessa directory dello script."
-        )
-        print(error_message)
-        return error_message
-
-    # The final instruction for the LLM, separated from the manual's content.
-    prompt_text = (
-        f"{manual_content}\n\n"
-        "--- ISTRUZIONE PER L'IA ---\n"
-        "Analizza il testo del documento fornito e, basandoti ESCLUSIVAMENTE SUL MANUALE SOPRA, identifica l'ID del capitolo più pertinente.\n"
-        "La tua risposta DEVE contenere SOLO l'ID completo del capitolo (formato: PARTE/CAPITOLO, es. P2_L_ASCESA_DEL_GENERE_HOMO/C05). "
-        "Non aggiungere alcuna spiegazione, titolo o testo aggiuntivo."
-    )
+def get_structure_for_prompt():
+    """Formatta la struttura in una stringa ottimizzata per un prompt LLM."""
+    prompt_text = "Analizza il testo fornito e identifica il capitolo più pertinente dalla seguente struttura gerarchica:\n\n"
+    for part_id, part_data in KNOWLEDGE_BASE_STRUCTURE.items():
+        prompt_text += f"--- {part_data['name']} ---\n"
+        for chapter_id, chapter_name in part_data["chapters"].items():
+            prompt_text += f"ID: {part_id}/{chapter_id} - {chapter_name}\n"
+        prompt_text += "\n"
+    prompt_text += "Rispondi SOLO con l'ID del capitolo più appropriato (es. P2_L_ASCESA_DEL_GENERE_HOMO/C05). Non aggiungere altro testo."
     return prompt_text
 
 def is_valid_category_id(category_id):
@@ -110,4 +95,3 @@ def is_valid_category_id(category_id):
     
     return (part_id in KNOWLEDGE_BASE_STRUCTURE and 
             chapter_id in KNOWLEDGE_BASE_STRUCTURE[part_id]["chapters"])
-
