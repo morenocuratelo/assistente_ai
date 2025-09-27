@@ -1,0 +1,17 @@
+llama-index-core
+llama-index
+llama-parse
+llama-index-llms-ollama
+llama-index-embeddings-huggingface
+llama-index-multi-modal-llms-ollama
+llama-index-readers-file
+streamlit
+pandas
+python-dotenv
+PyMuPDF
+python-docx
+duckduckgo-search
+streamlit-autorefresh
+matplotlib
+ipython
+celery[redis]
