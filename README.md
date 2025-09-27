@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 📚 Archivista AI v1.3.0 (Alpha 1.3)
 
 **Sistema Intelligente per l'Archiviazione e l'Interrogazione di Documenti Scientifici**
@@ -363,3 +364,7 @@ Questo progetto è distribuito sotto licenza MIT. Vedi il file `LICENSE` per i d
 ---
 
 **Archivista AI** - Porta l'intelligenza artificiale nel tuo archivio documentale 🚀
+=======
+# assistente_ai
+Un assistente AI per la gestione e l'interrogazione di un archivio di documenti.
+>>>>>>> 1baa98f36b79705d622b50d156d50de2ba1740f4
