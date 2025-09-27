@@ -7,7 +7,7 @@ import shutil
 import sqlite3
 import json
 from datetime import datetime, timedelta
-from pydantic import BaseModel, Field
+from pantic import BaseModel, Field
 from typing import List, Optional
 
 # Import per l'estrazione granulare del testo
@@ -47,7 +47,7 @@ def db_connect():
     conn.row_factory = sqlite3.Row
     return conn
 
-# --- NUOVE FUNZIONI PER L'ESTRAZIONE DEL TESTO ---
+# --- FUNZIONI PER L'ESTRAZIONE DEL TESTO ---
 
 def extract_text_from_pdf(file_path: str) -> str:
     """Estrae il testo completo da un file PDF."""
@@ -86,7 +86,7 @@ def classify_document(text_content):
         return "UNCATEGORIZED/C00"
 
 
-# --- TASK PRINCIPALE (MODIFICATA) ---
+# --- TASK PRINCIPALE (CON INDICIZZAZIONE OTTIMIZZATA) ---
 @celery_app.task(name='archivista.process_document')
 def process_document_task(file_path):
     initialize_services()
@@ -94,7 +94,7 @@ def process_document_task(file_path):
     update_status("Avviato processamento", file_name)
 
     try:
-        # 1. ESTRAZIONE TESTO (Logica Unificata)
+        # 1. ESTRAZIONE TESTO
         update_status("Estrazione testo...", file_name)
         file_ext = os.path.splitext(file_name)[1].lower()
         if file_ext == '.pdf':
@@ -107,7 +107,6 @@ def process_document_task(file_path):
         if not full_text:
             raise ValueError("Documento vuoto o illeggibile.")
         
-        # Crea un singolo oggetto Document per LlamaIndex
         doc = Document(text=full_text)
 
         # 2. CLASSIFICAZIONE
@@ -130,9 +129,8 @@ def process_document_task(file_path):
         except (json.JSONDecodeError, TypeError):
             metadata = PaperMetadata(title=file_name, authors=[], publication_year=datetime.now().year)
 
-        # 4. INDICIZZAZIONE (Logica ottimizzata nel prossimo step)
+        # 4. INDICIZZAZIONE OTTIMIZZATA
         update_status("Indicizzazione...", file_name)
-        # Aggiunge i metadati estratti al documento
         doc.metadata.update({
             "file_name": file_name,
             "title": metadata.title,
@@ -142,9 +140,22 @@ def process_document_task(file_path):
             "category_name": category_full_name
         })
         
-        storage_context = StorageContext.from_defaults(persist_dir=DB_STORAGE_DIR)
-        index = VectorStoreIndex.from_documents([doc], storage_context=storage_context) # Temporaneo, da ottimizzare
+        try:
+            # Prova a caricare un indice esistente
+            storage_context = StorageContext.from_defaults(persist_dir=DB_STORAGE_DIR)
+            index = load_index_from_storage(storage_context)
+            # Inserisci il nuovo documento nell'indice esistente
+            index.insert(doc)
+            print(f"--> Documento '{file_name}' inserito nell'indice esistente.")
+        except FileNotFoundError:
+            # Se l'indice non esiste, creane uno nuovo con il documento corrente
+            storage_context = StorageContext.from_defaults(persist_dir=DB_STORAGE_DIR)
+            index = VectorStoreIndex.from_documents([doc], storage_context=storage_context)
+            print(f"--> Creato nuovo indice con il primo documento: '{file_name}'.")
+
+        # Persisti le modifiche (sia per l'inserimento che per la creazione)
         index.storage_context.persist(persist_dir=DB_STORAGE_DIR)
+
 
         # 5. SALVATAGGIO SU DB
         update_status("Salvataggio database...", file_name)
