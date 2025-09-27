@@ -13,6 +13,12 @@ from typing import List, Optional
 # Import per l'estrazione granulare del testo
 import fitz  # PyMuPDF
 from docx import Document as DocxDocument
+import pdfplumber
+from pypdf import PdfReader
+from pdfminer.high_level import extract_text as pdfminer_extract
+
+from bs4 import BeautifulSoup
+import chardet
 
 from llama_index.core import Document, Settings, VectorStoreIndex, StorageContext, PromptTemplate, load_index_from_storage
 
@@ -27,6 +33,32 @@ CATEGORIZED_ARCHIVE_DIR = "Dall_Origine_alla_Complessita"
 DB_STORAGE_DIR = "db_memoria"
 METADATA_DB_FILE = os.path.join(DB_STORAGE_DIR, "metadata.sqlite")
 ARCHIVISTA_STATUS_FILE = os.path.join(DB_STORAGE_DIR, "archivista_status.json")
+
+
+def ensure_storage_files_exist():
+    """Ensure the storage directory and minimal storage json files exist.
+    This prevents FileNotFoundError when llama_index.StorageContext.from_defaults
+    attempts to open persistent kvstore files.
+    """
+    try:
+        os.makedirs(DB_STORAGE_DIR, exist_ok=True)
+        # Create a few minimal JSON files expected by llama_index simple_kvstore
+        for fname in [
+            "docstore.json",
+            "index_store.json",
+            "default__vector_store.json",
+            "graph_store.json",
+            "image__vector_store.json",
+        ]:
+            path = os.path.join(DB_STORAGE_DIR, fname)
+            if not os.path.exists(path):
+                try:
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write("{}")
+                except Exception as e:
+                    print(f"--> Errore creando file di storage '{path}': {e}")
+    except Exception as e:
+        print(f"--> Errore assicurando la cartella di storage: {e}")
 
 # --- MODELLI DATI E FUNZIONI DI UTILITÀ ---
 
@@ -50,14 +82,45 @@ def db_connect():
 # --- FUNZIONI PER L'ESTRAZIONE DEL TESTO ---
 
 def extract_text_from_pdf(file_path: str) -> str:
-    """Estrae il testo completo da un file PDF."""
-    try:
-        with fitz.open(file_path) as doc:
-            text = "".join(page.get_text() for page in doc)
-        return text
-    except Exception as e:
-        print(f"Errore estrazione testo da PDF {file_path}: {e}")
-        raise
+    """Estrae il testo completo da un file PDF con metodi fallback."""
+    text_extractors = [
+        ("PyMuPDF", extract_text_pymupdf),
+        ("PyPDF2", extract_text_pypdf2),
+        ("pdfplumber", extract_text_pdfplumber),
+        ("pdfminer", extract_text_pdfminer)
+    ]
+
+    for extractor_name, extractor_func in text_extractors:
+        try:
+            text = extractor_func(file_path)
+            if text and text.strip():
+                print(f"✓ Testo estratto con successo usando {extractor_name}")
+                return text
+        except Exception as e:
+            print(f"✗ Errore con {extractor_name}: {e}")
+            continue
+
+    raise ValueError(f"Impossibile estrarre testo dal PDF {file_path} con alcun metodo")
+
+def extract_text_pymupdf(file_path: str) -> str:
+    """Estrae testo usando PyMuPDF."""
+    with fitz.open(file_path) as doc:
+        return "".join(page.get_text() for page in doc)
+
+def extract_text_pypdf2(file_path: str) -> str:
+    """Estrae testo usando PyPDF2."""
+    with open(file_path, 'rb') as file:
+        pdf_reader = PdfReader(file)
+        return "".join(page.extract_text() for page in pdf_reader.pages)
+
+def extract_text_pdfplumber(file_path: str) -> str:
+    """Estrae testo usando pdfplumber."""
+    with pdfplumber.open(file_path) as pdf:
+        return "".join(page.extract_text() or "" for page in pdf.pages)
+
+def extract_text_pdfminer(file_path: str) -> str:
+    """Estrae testo usando pdfminer."""
+    return pdfminer_extract(file_path)
 
 def extract_text_from_docx(file_path: str) -> str:
     """Estrae il testo completo da un file DOCX."""
@@ -68,6 +131,66 @@ def extract_text_from_docx(file_path: str) -> str:
     except Exception as e:
         print(f"Errore estrazione testo da DOCX {file_path}: {e}")
         raise
+
+def extract_text_from_rtf(file_path: str) -> str:
+    """Estrae il testo da un file RTF (semplificato)."""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            rtf_content = file.read()
+        # Semplice rimozione dei comandi RTF più comuni
+        import re
+        # Rimuovi i comandi RTF di base
+        text = re.sub(r'\\[a-z]+\d*\s?', '', rtf_content)  # Rimuovi comandi come \b0, \i0, etc.
+        text = re.sub(r'\\[a-z]+', '', text)  # Rimuovi altri comandi RTF
+        text = re.sub(r'[{}]', '', text)  # Rimuovi parentesi graffe
+        return text.strip()
+    except Exception as e:
+        print(f"Errore estrazione testo da RTF {file_path}: {e}")
+        raise
+
+def extract_text_from_html(file_path: str) -> str:
+    """Estrae il testo da un file HTML."""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            html_content = file.read()
+        soup = BeautifulSoup(html_content, 'html.parser')
+        return soup.get_text()
+    except Exception as e:
+        print(f"Errore estrazione testo da HTML {file_path}: {e}")
+        raise
+
+def extract_text_from_txt(file_path: str) -> str:
+    """Estrae il testo da un file di testo."""
+    try:
+        # Prima prova con UTF-8
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                return file.read()
+        except UnicodeDecodeError:
+            # Se UTF-8 fallisce, prova a rilevare l'encoding
+            with open(file_path, 'rb') as file:
+                raw_data = file.read()
+            detected_encoding = chardet.detect(raw_data)['encoding']
+            if detected_encoding:
+                with open(file_path, 'r', encoding=detected_encoding) as file:
+                    return file.read()
+            else:
+                raise ValueError("Impossibile rilevare l'encoding del file")
+    except Exception as e:
+        print(f"Errore estrazione testo da TXT {file_path}: {e}")
+        raise
+
+def get_text_extractor(file_extension: str):
+    """Restituisce la funzione di estrazione appropriata per l'estensione del file."""
+    extractors = {
+        '.pdf': extract_text_from_pdf,
+        '.docx': extract_text_from_docx,
+        '.rtf': extract_text_from_rtf,
+        '.html': extract_text_from_html,
+        '.htm': extract_text_from_html,
+        '.txt': extract_text_from_txt,
+    }
+    return extractors.get(file_extension.lower())
 
 def classify_document(text_content):
     if not Settings.llm:
@@ -93,18 +216,23 @@ def process_document_task(file_path):
     file_name = os.path.basename(file_path)
     update_status("Avviato processamento", file_name)
 
+    # Ensure storage folder and minimal persistent files exist before llama_index loads them
+    ensure_storage_files_exist()
+
     try:
         # 1. ESTRAZIONE TESTO
         update_status("Estrazione testo...", file_name)
         file_ext = os.path.splitext(file_name)[1].lower()
-        if file_ext == '.pdf':
-            full_text = extract_text_from_pdf(file_path)
-        elif file_ext == '.docx':
-            full_text = extract_text_from_docx(file_path)
-        else:
+
+        # Ottieni la funzione di estrazione appropriata
+        extractor = get_text_extractor(file_ext)
+        if not extractor:
             raise ValueError(f"Formato file non supportato: {file_ext}")
 
-        if not full_text:
+        # Estrai il testo usando la funzione appropriata
+        full_text = extractor(file_path)
+
+        if not full_text or not full_text.strip():
             raise ValueError("Documento vuoto o illeggibile.")
         
         doc = Document(text=full_text)
@@ -139,15 +267,28 @@ def process_document_task(file_path):
             "category_id": category_id,
             "category_name": category_full_name
         })
-        
-        try:
-            # Prova a caricare un indice esistente
-            storage_context = StorageContext.from_defaults(persist_dir=DB_STORAGE_DIR)
-            index = load_index_from_storage(storage_context)
-            # Inserisci il nuovo documento nell'indice esistente
-            index.insert(doc)
-            print(f"--> Documento '{file_name}' inserito nell'indice esistente.")
-        except FileNotFoundError:
+
+        # Verifica se l'indice esiste già
+        index_exists = os.path.exists(os.path.join(DB_STORAGE_DIR, "docstore.json"))
+
+        if index_exists:
+            try:
+                # Prova a caricare un indice esistente
+                storage_context = StorageContext.from_defaults(persist_dir=DB_STORAGE_DIR)
+                # Ensure embed_model is set before loading index
+                if Settings.embed_model is None:
+                    print("Embedding model not set, reinitializing services...")
+                    initialize_services()
+                index = load_index_from_storage(storage_context)
+                # Inserisci il nuovo documento nell'indice esistente
+                index.insert(doc)
+                print(f"--> Documento '{file_name}' inserito nell'indice esistente.")
+            except Exception as e:
+                print(f"--> Errore nel caricamento dell'indice esistente: {e}. Creazione nuovo indice.")
+                storage_context = StorageContext.from_defaults(persist_dir=DB_STORAGE_DIR)
+                index = VectorStoreIndex.from_documents([doc], storage_context=storage_context)
+                print(f"--> Creato nuovo indice con il documento: '{file_name}'.")
+        else:
             # Se l'indice non esiste, creane uno nuovo con il documento corrente
             storage_context = StorageContext.from_defaults(persist_dir=DB_STORAGE_DIR)
             index = VectorStoreIndex.from_documents([doc], storage_context=storage_context)
@@ -223,7 +364,8 @@ def scan_for_new_documents_periodic():
     """Task periodica: scansiona la cartella di input e avvia il processamento per i nuovi file."""
     print("🤖 Esecuzione scansione periodica per nuovi documenti...")
     try:
-        new_files = [f for f in os.listdir(DOCS_TO_PROCESS_DIR) if f.lower().endswith(('.pdf', '.docx'))]
+        supported_extensions = ['.pdf', '.docx', '.rtf', '.html', '.htm', '.txt']
+        new_files = [f for f in os.listdir(DOCS_TO_PROCESS_DIR) if any(f.lower().endswith(ext) for ext in supported_extensions)]
         if not new_files:
             print("  -> Nessun nuovo documento trovato.")
             return "Nessun nuovo documento."

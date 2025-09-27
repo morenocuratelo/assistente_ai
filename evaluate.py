@@ -32,6 +32,10 @@ async def main():
 
     try:
         storage_context = StorageContext.from_defaults(persist_dir=DB_STORAGE_DIR)
+        # Ensure embed_model is set before loading index
+        if hasattr(index, 'embed_model') and index.embed_model is None:
+            print("Embedding model not set, reinitializing services...")
+            initialize_services()
         index = load_index_from_storage(storage_context)
         print("Indice caricato correttamente dalla memoria.")
     except FileNotFoundError:
@@ -136,4 +140,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

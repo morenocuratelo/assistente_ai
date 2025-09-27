@@ -2,11 +2,13 @@ import streamlit as st
 import os
 import pandas as pd
 import json
+import time
+import threading
 from datetime import datetime
 from llama_index.core import PromptTemplate, Settings, StorageContext, load_index_from_storage
 from llama_index.core.vector_stores import MetadataFilters, ExactMatchFilter
 
-from config import initialize_services
+from config import initialize_services, get_chat_llm
 from file_utils import setup_database, get_papers_dataframe, delete_paper, update_paper_metadata
 import prompt_manager
 import knowledge_structure
@@ -24,6 +26,12 @@ if 'initialized' not in st.session_state:
     setup_database()
     st.session_state.initialized = True
 
+# --- NUOVE VARIABILI PER IL LOG TEMPORANEO ---
+if 'log_messages' not in st.session_state:
+    st.session_state.log_messages = []
+if 'auto_scan_completed' not in st.session_state:
+    st.session_state.auto_scan_completed = False
+
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": "Ciao! Sono Archivista AI."}]
 if 'selected_paper' not in st.session_state:
@@ -36,6 +44,14 @@ def get_archivista_status():
     except (FileNotFoundError, json.JSONDecodeError):
         return {"status": "Inattivo", "file": None}
 
+def add_log_message(message):
+    """Aggiunge un messaggio al log temporaneo e mantiene solo gli ultimi 4 messaggi."""
+    current_time = datetime.now().strftime("%H:%M:%S")
+    st.session_state.log_messages.append(f"[{current_time}] {message}")
+    # Mantieni solo gli ultimi 4 messaggi
+    if len(st.session_state.log_messages) > 4:
+        st.session_state.log_messages = st.session_state.log_messages[-4:]
+
 def scan_and_process_documents():
     """
     Scansiona la cartella e invia i nuovi documenti al worker Celery.
@@ -44,41 +60,64 @@ def scan_and_process_documents():
         # Importa la task da dove è definita
         from archivista_processing import process_document_task
 
-        new_files = [f for f in os.listdir(DOCS_TO_PROCESS_DIR) if f.lower().endswith(('.pdf', '.docx'))]
+        supported_extensions = ['.pdf', '.docx', '.rtf', '.html', '.htm', '.txt']
+        new_files = [f for f in os.listdir(DOCS_TO_PROCESS_DIR) if any(f.lower().endswith(ext) for ext in supported_extensions)]
         if not new_files:
-            st.info("Nessun nuovo documento da processare.")
+            add_log_message("Nessun nuovo documento da processare.")
             return
+
+        add_log_message(f"Trovati {len(new_files)} nuovi documenti da processare")
 
         # Proviamo a inviare ogni file come task separata al worker
         sent = 0
         for file_name in new_files:
             file_path = os.path.join(DOCS_TO_PROCESS_DIR, file_name)
             try:
+                add_log_message(f"Avvio processamento: {file_name}")
                 process_document_task.delay(file_path)
                 sent += 1
+                add_log_message(f"File {file_name} inviato per processamento")
             except Exception:
                 # Se Celery/Redis non è disponibile, eseguiamo localmente per non bloccare l'utente
-                st.warning("Broker Celery non disponibile: esecuzione locale delle task in fall-back.")
+                add_log_message("Broker Celery non disponibile: esecuzione locale")
                 try:
                     # call the task function synchronously
                     process_document_task(file_path)
                     sent += 1
+                    add_log_message(f"File {file_name} processato localmente")
                 except Exception as e_local:
-                    st.error(f"Errore durante il processamento locale di {file_name}: {e_local}")
+                    add_log_message(f"Errore processamento {file_name}: {str(e_local)[:50]}...")
 
-        st.success(f"{sent} documenti inviati per il processamento (in background o locale).")
-        st.info("L'archivio si aggiornerà automaticamente al completamento.")
+        add_log_message(f"{sent} documenti inviati per il processamento")
+        add_log_message("L'archivio si aggiornerà automaticamente al completamento.")
     except Exception as e:
-        st.error(f"Errore durante l'invio delle task: {e}")
+        add_log_message(f"Errore durante la scansione: {str(e)[:50]}...")
+
+def auto_scan_at_startup():
+    """Esegue la scansione automatica all'avvio se non è già stata completata."""
+    if not st.session_state.auto_scan_completed:
+        add_log_message("Avvio scansione automatica documenti...")
+        scan_and_process_documents()
+        st.session_state.auto_scan_completed = True
 
 # --- UI ---
-# ... (il resto del tuo file main.py da "UI SIDEBAR" in poi può rimanere invariato)
+# Esegui la scansione automatica all'avvio
+auto_scan_at_startup()
+
 with st.sidebar:
     st.title("Archivista AI")
     status = get_archivista_status()
     st.markdown(f"**Stato:** {status['status']}")
     if status.get('file'): st.markdown(f"**File:** `{status['file']}`")
     st.divider()
+
+    # Log temporaneo nella sidebar
+    if st.session_state.log_messages:
+        st.subheader("📋 Log Attività")
+        for log_msg in st.session_state.log_messages:
+            st.text(log_msg)
+        st.divider()
+
     if st.button("🔍 Scansiona Nuovi Documenti", use_container_width=True, type="primary"):
         scan_and_process_documents()
     st.divider()
@@ -140,9 +179,24 @@ with col_chat:
             with st.spinner("L'AI sta pensando..."):
                 try:
                     storage_context = StorageContext.from_defaults(persist_dir=DB_STORAGE_DIR)
+                    # Load the most recent index (the last one in the index_store)
+                    # Ensure embed_model is set before loading index
+                    if Settings.embed_model is None:
+                        print("Embedding model not set, reinitializing services...")
+                        initialize_services()
                     index = load_index_from_storage(storage_context)
 
-                    query_engine = index.as_query_engine(filters=filters, similarity_top_k=3)
+                    # Get chat LLM for better responses
+                    chat_llm = get_chat_llm()
+                    if chat_llm is None:
+                        st.error("Chat LLM non disponibile. Verifica che Ollama sia in esecuzione.")
+                        st.stop()
+
+                    query_engine = index.as_query_engine(
+                        filters=filters,
+                        similarity_top_k=3,
+                        llm=chat_llm
+                    )
                     response = query_engine.query(prompt)
                     st.markdown(str(response))
                     st.session_state.messages.append({"role": "assistant", "content": str(response)})
