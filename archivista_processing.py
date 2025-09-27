@@ -26,6 +26,7 @@ from celery_app import celery_app
 from config import initialize_services
 import prompt_manager
 import knowledge_structure
+from file_utils import setup_database
 
 # --- CONFIGURAZIONE (sposteremo in config.py nel prossimo step) ---
 DOCS_TO_PROCESS_DIR = "documenti_da_processare"
@@ -214,10 +215,14 @@ def classify_document(text_content):
 def process_document_task(file_path):
     initialize_services()
     file_name = os.path.basename(file_path)
-    update_status("Avviato processamento", file_name)
 
     # Ensure storage folder and minimal persistent files exist before llama_index loads them
     ensure_storage_files_exist()
+
+    # Setup database table
+    setup_database()
+
+    update_status("Avviato processamento", file_name)
 
     try:
         # 1. ESTRAZIONE TESTO
