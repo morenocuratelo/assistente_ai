@@ -18,6 +18,10 @@ ARCHIVISTA_STATUS_FILE = os.path.join(DB_STORAGE_DIR, "archivista_status.json")
 # --- INIZIALIZZAZIONE ---
 st.set_page_config(page_title="Archivista AI v2.3", layout="wide")
 
+# Ensure required directories exist
+os.makedirs(DB_STORAGE_DIR, exist_ok=True)
+os.makedirs(DOCS_TO_PROCESS_DIR, exist_ok=True)
+
 # Blocco di inizializzazione eseguito una sola volta per sessione
 if 'initialized' not in st.session_state:
     # Inizializza i servizi LLM e di embedding
@@ -34,6 +38,10 @@ if 'initialized' not in st.session_state:
 def get_archivista_status():
     """Legge lo stato corrente del processo di indicizzazione da un file JSON."""
     try:
+        # Verifica che la directory esista
+        if not os.path.exists(DB_STORAGE_DIR):
+            return {"status": "Inattivo", "file": None, "timestamp": datetime.now().isoformat()}
+
         with open(ARCHIVISTA_STATUS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
@@ -139,12 +147,16 @@ with st.sidebar:
     with status_placeholder.container():
         status = get_archivista_status()
         status_text = status.get('status', 'Inattivo')
-        
+
         is_processing = status_text not in ["Inattivo", "Completato"] and "Errore" not in status_text
         is_error = "Errore" in status_text
 
         if is_error:
-            st.error(f"**❌ Errore:** {status_text.replace('Errore: ', '')}\n\n**File:** `{status.get('file', 'N/A')}`")
+            # Se c'è un errore con docstore.json, mostra un messaggio più user-friendly
+            if "docstore.json" in status_text and "No such file or directory" in status_text:
+                st.info("**📁 Stato:** Inattivo (Database non ancora creato)")
+            else:
+                st.error(f"**❌ Errore:** {status_text.replace('Errore: ', '')}\n\n**File:** `{status.get('file', 'N/A')}`")
         elif is_processing:
             st.info(f"**⏳ Stato:** {status_text}\n\n**File:** `{status.get('file', 'N/A')}`")
         else:
@@ -207,32 +219,60 @@ with col_chat:
 
     if prompt := st.chat_input("Fai una domanda..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"): st.markdown(prompt)
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
         with st.chat_message("assistant"):
             with st.spinner("L'AI sta pensando..."):
                 try:
-                    storage_context = StorageContext.from_defaults(persist_dir=DB_STORAGE_DIR)
-                    if Settings.embed_model is None: initialize_services()
-                    
-                    # Carica l'indice dallo storage
-                    index = load_index_from_storage(storage_context)
-                    
+                    # Ottieni l'LLM per la chat
                     chat_llm = get_chat_llm()
                     if chat_llm is None:
-                        st.error("Chat LLM non disponibile. Verifica che Ollama sia in esecuzione.")
-                        st.stop()
-                        
-                    query_engine = index.as_query_engine(filters=filters, similarity_top_k=3, llm=chat_llm)
-                    response = query_engine.query(prompt)
-                    st.markdown(str(response))
-                    st.session_state.messages.append({"role": "assistant", "content": str(response)})
-                except ValueError as e:
-                    if "No index in storage context" in str(e) or "docstore.json not found" in str(e):
-                        st.warning("L'archivio è vuoto o in fase di creazione. Aggiungi documenti e attendi il completamento per poter chattare.")
-                    else:
-                        st.error(f"Errore durante la query: {e}")
+                        raise ConnectionError("Chat LLM (Ollama) non disponibile.")
+
+                    # Verifica le condizioni per usare l'archivio
+                    db_path = os.path.join(DB_STORAGE_DIR, "docstore.json")
+                    index_path = os.path.join(DB_STORAGE_DIR, "index_store.json")
+                    all_required_files_exist = all(os.path.exists(p) for p in [db_path, index_path])
+                    embed_model_available = Settings.embed_model is not None
+                    
+                    # Verifica se l'utente ha richiesto un contesto specifico
+                    has_specific_context = st.session_state.selected_paper or selected_category_id != "Tutte"
+                    
+                    # Usa la modalità archivio solo se abbiamo tutto il necessario
+                    use_archive_mode = all_required_files_exist and has_specific_context and embed_model_available
+                    
+                    if has_specific_context and not all_required_files_exist:
+                        st.info("⚠️ L'archivio è vuoto. Risponderò in modalità chat generica.")
+
+                    if use_archive_mode:
+                        try:
+                            storage_context = StorageContext.from_defaults(persist_dir=DB_STORAGE_DIR)
+                            if Settings.embed_model is None:
+                                initialize_services()
+
+                            index = load_index_from_storage(storage_context)
+                            query_engine = index.as_query_engine(filters=filters, similarity_top_k=3, llm=chat_llm)
+                            response = query_engine.query(prompt)
+                            response_content = str(response)
+                        except Exception as archive_error:
+                            st.warning(f"⚠️ Non è stato possibile interrogare l'archivio. Rispondo in modalità generica.")
+                            use_archive_mode = False
+                    
+                    # Se non stiamo usando la modalità archivio, usa la modalità generica
+                    if not use_archive_mode:
+                        response = chat_llm.complete(prompt)
+                        response_content = str(response)
+
+                    # Aggiorna l'interfaccia con la risposta
+                    st.markdown(response_content)
+                    st.session_state.messages.append({"role": "assistant", "content": response_content})
+
                 except Exception as e:
-                    st.error(f"Si è verificato un errore imprevisto durante la query: {e}")
+                    st.error(f"Si è verificato un errore imprevisto: {e}")
+                    error_message = f"Errore critico: {e}"
+                    st.session_state.messages.append({"role": "assistant", "content": error_message})
+
 
 # --- Meccanismo di Auto-Refresh ---
 # Controlla lo stato e forza un refresh della pagina se un file è in elaborazione

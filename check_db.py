@@ -105,6 +105,7 @@ def check_database():
 
     else:
         print(f"❌ Database non trovato: {metadata_file}")
+        print("ℹ️  Il database verrà creato automaticamente quando elabori il primo documento")
 
 def check_directories():
     """Verifica le directory necessarie"""

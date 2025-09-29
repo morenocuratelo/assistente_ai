@@ -21,6 +21,14 @@ def setup_database():
     Crea la tabella 'papers' nel database se non esiste,
     garantendo che abbia tutte le colonne necessarie.
     """
+    # Create directory if it doesn't exist
+    os.makedirs(DB_STORAGE_DIR, exist_ok=True)
+    
+    # If no database exists yet, just create directories and return
+    if not os.path.exists(METADATA_DB_FILE):
+        print("✅ Directory del database creata. Il database verrà inizializzato quando necessario.")
+        return
+        
     try:
         with db_connect() as conn:
             cursor = conn.cursor()
@@ -39,18 +47,22 @@ def setup_database():
             conn.commit()
             print("✅ Database verificato e pronto.")
     except sqlite3.Error as e:
-        print(f"❌ Errore durante la configurazione del database: {e}")
-        st.error(f"Errore critico del database: {e}")
+        print(f"⚠️ Nota: {e}")
+        # Don't show error to user, just log it
+        pass
 
 @st.cache_data(ttl=10)
 def get_papers_dataframe():
     """Recupera i dati dei paper dal DB e li restituisce come DataFrame."""
+    if not os.path.exists(METADATA_DB_FILE):
+        return pd.DataFrame()  # Return empty DataFrame if no database exists
+    
     try:
         with db_connect() as conn:
             df = pd.read_sql_query("SELECT * FROM papers ORDER BY category_id, title", conn)
             return df
-    except (sqlite3.OperationalError, pd.io.sql.DatabaseError):
-        # La tabella potrebbe non esistere ancora o essere vuota
+    except Exception as e:
+        print(f"Errore nel recupero dei paper: {e}")
         return pd.DataFrame()
 
 def delete_paper(file_name: str):

@@ -179,13 +179,19 @@ def process_document_task(self, file_path):
         doc.metadata.update({"file_name": file_name, "title": metadata.title, "authors": json.dumps(metadata.authors), "publication_year": metadata.publication_year, "category_id": category_id, "category_name": category_full_name})
         
         storage_context = StorageContext.from_defaults(persist_dir=DB_STORAGE_DIR)
-        
-        if os.path.exists(os.path.join(DB_STORAGE_DIR, "docstore.json")):
-            index = load_index_from_storage(storage_context)
-            index.insert(doc)
-        else:
+
+        try:
+            if os.path.exists(os.path.join(DB_STORAGE_DIR, "docstore.json")):
+                index = load_index_from_storage(storage_context)
+                index.insert(doc)
+            else:
+                index = VectorStoreIndex.from_documents([doc], storage_context=storage_context)
+            index.storage_context.persist(persist_dir=DB_STORAGE_DIR)
+        except Exception as e:
+            # Se c'è un errore con l'index esistente, creane uno nuovo
+            print(f"Errore con index esistente: {e}. Creo nuovo index.")
             index = VectorStoreIndex.from_documents([doc], storage_context=storage_context)
-        index.storage_context.persist(persist_dir=DB_STORAGE_DIR)
+            index.storage_context.persist(persist_dir=DB_STORAGE_DIR)
 
         # 5. SALVATAGGIO SU DB E ARCHIVIAZIONE
         update_status("Salvataggio finale...", file_name)
