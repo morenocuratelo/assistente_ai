@@ -20,7 +20,7 @@ amqp==5.3.1
     # via kombu
 annotated-types==0.7.0
     # via pydantic
-anyio==4.11.0
+anyio==4.10.0
     # via
     #   httpx
     #   openai
@@ -31,17 +31,21 @@ attrs==25.3.0
     #   aiohttp
     #   jsonschema
     #   referencing
+backcall==0.2.0
+    # via ipython
 banks==2.2.0
     # via llama-index-core
 beautifulsoup4==4.13.5
-    # via llama-index-readers-file
+    # via
+    #   -r requirements.in
+    #   llama-index-readers-file
 billiard==4.2.2
     # via celery
 blinker==1.9.0
     # via streamlit
 cachetools==6.2.0
     # via streamlit
-celery[redis]==5.5.3
+celery==5.5.3
     # via -r requirements.in
 certifi==2025.8.3
     # via
@@ -49,8 +53,12 @@ certifi==2025.8.3
     #   httpx
     #   llama-cloud
     #   requests
+cffi==2.0.0
+    # via cryptography
 charset-normalizer==3.4.3
-    # via requests
+    # via
+    #   pdfminer-six
+    #   requests
 click==8.3.0
     # via
     #   celery
@@ -75,6 +83,8 @@ colorama==0.4.6
     #   tqdm
 contourpy==1.3.3
     # via matplotlib
+cryptography==46.0.1
+    # via pdfminer-six
 cycler==0.12.1
     # via matplotlib
 dataclasses-json==0.6.7
@@ -95,6 +105,8 @@ distro==1.9.0
     # via openai
 duckduckgo-search==8.1.1
     # via -r requirements.in
+et-xmlfile==2.0.0
+    # via openpyxl
 executing==2.2.1
     # via stack-data
 filelock==3.19.1
@@ -133,7 +145,7 @@ httpx==0.28.1
     #   llama-index-core
     #   ollama
     #   openai
-huggingface-hub[inference]==0.35.1
+huggingface-hub[inference]==0.35.0
     # via
     #   llama-index-embeddings-huggingface
     #   sentence-transformers
@@ -145,10 +157,8 @@ idna==3.10
     #   httpx
     #   requests
     #   yarl
-ipython==9.5.0
+ipython==8.12.3
     # via -r requirements.in
-ipython-pygments-lexers==1.1.1
-    # via ipython
 jedi==0.19.2
     # via ipython
 jinja2==3.1.6
@@ -169,19 +179,21 @@ jsonschema-specifications==2025.9.1
     # via jsonschema
 kiwisolver==1.4.9
     # via matplotlib
-kombu[redis]==5.5.4
-    # via celery
+kombu==5.5.4
+    # via
+    #   -r requirements.in
+    #   celery
 llama-cloud==0.1.35
     # via
     #   llama-cloud-services
     #   llama-index-indices-managed-llama-cloud
 llama-cloud-services==0.6.54
     # via llama-parse
-llama-index==0.14.0
+llama-index==0.14.2
     # via -r requirements.in
 llama-index-cli==0.5.1
     # via llama-index
-llama-index-core==0.13.6
+llama-index-core==0.14.2
     # via
     #   -r requirements.in
     #   llama-cloud-services
@@ -192,10 +204,9 @@ llama-index-core==0.13.6
     #   llama-index-indices-managed-llama-cloud
     #   llama-index-llms-ollama
     #   llama-index-llms-openai
-    #   llama-index-multi-modal-llms-ollama
     #   llama-index-readers-file
     #   llama-index-readers-llama-parse
-llama-index-embeddings-huggingface==0.6.0
+llama-index-embeddings-huggingface==0.6.1
     # via -r requirements.in
 llama-index-embeddings-openai==0.5.1
     # via
@@ -206,31 +217,26 @@ llama-index-indices-managed-llama-cloud==0.9.4
 llama-index-instrumentation==0.4.1
     # via llama-index-workflows
 llama-index-llms-ollama==0.7.3
-    # via
-    #   -r requirements.in
-    #   llama-index-multi-modal-llms-ollama
-llama-index-llms-openai==0.5.5
+    # via -r requirements.in
+llama-index-llms-openai==0.5.6
     # via
     #   llama-index
     #   llama-index-cli
-llama-index-multi-modal-llms-ollama==0.6.1
-    # via -r requirements.in
 llama-index-readers-file==0.5.4
     # via
     #   -r requirements.in
     #   llama-index
 llama-index-readers-llama-parse==0.5.1
     # via llama-index
-llama-index-workflows==1.3.0
+llama-index-workflows==2.2.2
     # via llama-index-core
 llama-parse==0.6.54
-    # via
-    #   -r requirements.in
-    #   llama-index-readers-llama-parse
-lxml==6.0.2
+    # via llama-index-readers-llama-parse
+lxml==6.0.1
     # via
     #   duckduckgo-search
     #   python-docx
+    #   python-pptx
 markupsafe==3.0.2
     # via jinja2
 marshmallow==3.26.1
@@ -257,9 +263,10 @@ networkx==3.5
     #   torch
 nltk==3.9.1
     # via
+    #   -r requirements.in
     #   llama-index
     #   llama-index-core
-numpy==2.3.3
+numpy==2.2.6
     # via
     #   contourpy
     #   llama-index-core
@@ -270,12 +277,14 @@ numpy==2.3.3
     #   scipy
     #   streamlit
     #   transformers
-ollama==0.6.0
+ollama==0.5.4
     # via llama-index-llms-ollama
-openai==1.109.1
+openai==1.108.1
     # via
     #   llama-index-embeddings-openai
     #   llama-index-llms-openai
+openpyxl==3.1.5
+    # via -r requirements.in
 packaging==25.0
     # via
     #   altair
@@ -292,10 +301,18 @@ pandas==2.2.3
     #   streamlit
 parso==0.8.5
     # via jedi
+pdfminer-six==20250506
+    # via pdfplumber
+pdfplumber==0.11.7
+    # via -r requirements.in
+pickleshare==0.7.5
+    # via ipython
 pillow==11.3.0
     # via
     #   llama-index-core
     #   matplotlib
+    #   pdfplumber
+    #   python-pptx
     #   sentence-transformers
     #   streamlit
 platformdirs==4.4.0
@@ -319,6 +336,8 @@ pure-eval==0.2.3
     # via stack-data
 pyarrow==21.0.0
     # via streamlit
+pycparser==2.23
+    # via cffi
 pydantic==2.11.9
     # via
     #   banks
@@ -334,15 +353,15 @@ pydantic-core==2.33.2
 pydeck==0.9.1
     # via streamlit
 pygments==2.19.2
-    # via
-    #   ipython
-    #   ipython-pygments-lexers
+    # via ipython
 pymupdf==1.26.4
     # via -r requirements.in
 pyparsing==3.2.5
     # via matplotlib
 pypdf==6.1.0
     # via llama-index-readers-file
+pypdfium2==4.30.0
+    # via pdfplumber
 python-dateutil==2.9.0.post0
     # via
     #   celery
@@ -354,15 +373,17 @@ python-dotenv==1.1.1
     # via
     #   -r requirements.in
     #   llama-cloud-services
+python-pptx==1.0.2
+    # via -r requirements.in
 pytz==2025.2
     # via pandas
-pyyaml==6.0.3
+pyyaml==6.0.2
     # via
     #   huggingface-hub
     #   llama-index-core
     #   transformers
 redis==5.2.1
-    # via kombu
+    # via -r requirements.in
 referencing==0.36.2
     # via
     #   jsonschema
@@ -391,8 +412,10 @@ scipy==1.16.2
     # via
     #   scikit-learn
     #   sentence-transformers
-sentence-transformers==5.1.1
-    # via llama-index-embeddings-huggingface
+sentence-transformers==5.1.0
+    # via
+    #   -r requirements.in
+    #   llama-index-embeddings-huggingface
 six==1.17.0
     # via python-dateutil
 smmap==5.0.2
@@ -407,7 +430,7 @@ sqlalchemy[asyncio]==2.0.43
     # via llama-index-core
 stack-data==0.6.3
     # via ipython
-streamlit==1.50.0
+streamlit==1.49.1
     # via
     #   -r requirements.in
     #   streamlit-autorefresh
@@ -456,13 +479,13 @@ typing-extensions==4.15.0
     #   anyio
     #   beautifulsoup4
     #   huggingface-hub
-    #   ipython
     #   llama-index-core
     #   llama-index-workflows
     #   openai
     #   pydantic
     #   pydantic-core
     #   python-docx
+    #   python-pptx
     #   referencing
     #   sentence-transformers
     #   sqlalchemy
@@ -495,6 +518,8 @@ wrapt==1.17.3
     # via
     #   deprecated
     #   llama-index-core
+xlsxwriter==3.2.9
+    # via python-pptx
 yarl==1.20.1
     # via aiohttp
 
