@@ -103,3 +103,37 @@ def update_paper_metadata(file_name: str, new_data: dict):
         print(f"Errore database in update_paper_metadata: {e}")
         return False
 
+def cleanup_missing_files():
+    """
+    Rimuove dal database i riferimenti a file che non esistono più fisicamente.
+    Restituisce il numero di record eliminati.
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT file_name, category_id FROM papers")
+            papers = cursor.fetchall()
+
+        removed_count = 0
+        for paper in papers:
+            file_name = paper['file_name']
+            category_id = paper['category_id']
+
+            # Verifica se il file esiste nella cartella categorizzata
+            file_path = os.path.join(CATEGORIZED_ARCHIVE_DIR, *category_id.split('/'), file_name)
+
+            if not os.path.exists(file_path):
+                # Il file non esiste, rimuovilo dal database
+                cursor.execute("DELETE FROM papers WHERE file_name = ?", (file_name,))
+                removed_count += 1
+                print(f"🗑️ Rimosso dal database: {file_name} (file non trovato: {file_path})")
+
+        if removed_count > 0:
+            conn.commit()
+            print(f"✅ Pulizia completata: rimossi {removed_count} riferimenti a file inesistenti.")
+
+        return removed_count
+
+    except Exception as e:
+        print(f"❌ Errore durante la pulizia del database: {e}")
+        return 0
