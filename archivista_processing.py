@@ -77,6 +77,34 @@ def extract_text_pdfminer(file_path: str) -> str:
     return pdfminer_extract(file_path)
 def extract_text_from_docx(file_path: str) -> str:
     return "\n".join(p.text for p in DocxDocument(file_path).paragraphs)
+
+def extract_text_from_doc(file_path: str) -> str:
+    """Extract text from legacy Word .doc files"""
+    try:
+        # Try using antiword if available (external tool)
+        import subprocess
+        try:
+            result = subprocess.run(['antiword', file_path],
+                                  capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                return result.stdout
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+        # Fallback: try using pypandoc if available
+        try:
+            import pypandoc
+            return pypandoc.convert_file(file_path, 'plain', format='doc')
+        except ImportError:
+            pass
+
+        # Final fallback: return placeholder message
+        print(f"⚠️ Estrazione DOC non disponibile per {file_path}")
+        return f"Contenuto Word (.doc): {os.path.basename(file_path)} - Richiede antiword o pypandoc per estrazione completa"
+
+    except Exception as e:
+        print(f"Errore estrazione DOC: {e}")
+        return ""
 def extract_text_from_rtf(file_path: str) -> str:
     try:
         from striprtf.striprtf import rtf_to_text
@@ -93,8 +121,146 @@ def extract_text_from_txt(file_path: str) -> str:
         enc = chardet.detect(raw)['encoding']
         return raw.decode(enc or 'utf-8')
 
+def extract_text_from_pptx(file_path: str) -> str:
+    """Extract text from PowerPoint .pptx files"""
+    try:
+        from pptx import Presentation
+        prs = Presentation(file_path)
+        text_content = []
+
+        for slide in prs.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "text"):
+                    text_content.append(shape.text)
+
+        return '\n'.join(text_content)
+    except Exception as e:
+        print(f"Errore estrazione PPTX: {e}")
+        return ""
+
+def extract_text_from_ppt(file_path: str) -> str:
+    """Extract text from legacy PowerPoint .ppt files"""
+    try:
+        # For .ppt files, we can try to use an external tool or convert to pptx
+        # For now, return a placeholder - full implementation would need additional tools
+        print(f"⚠️ Estrazione PPT non completamente implementata per {file_path}")
+        return f"Contenuto PowerPoint (.ppt): {os.path.basename(file_path)} - Richiede tool esterno per estrazione completa"
+    except Exception as e:
+        print(f"Errore estrazione PPT: {e}")
+        return ""
+
+def extract_text_from_xlsx(file_path: str) -> str:
+    """Extract text from Excel .xlsx files"""
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+        text_content = []
+
+        for sheet_name in wb.sheetnames:
+            sheet = wb[sheet_name]
+            sheet_text = [f"Foglio: {sheet_name}"]
+
+            for row in sheet.iter_rows(values_only=True):
+                # Extract non-empty cell values
+                row_data = [str(cell) for cell in row if cell is not None]
+                if row_data:
+                    sheet_text.append(" | ".join(row_data))
+
+            if len(sheet_text) > 1:  # More than just the sheet name
+                text_content.extend(sheet_text)
+                text_content.append("")  # Empty line between sheets
+
+        return '\n'.join(text_content)
+    except Exception as e:
+        print(f"Errore estrazione XLSX: {e}")
+        return ""
+
+def extract_text_from_xls(file_path: str) -> str:
+    """Extract text from legacy Excel .xls files"""
+    try:
+        import xlrd
+        wb = xlrd.open_workbook(file_path)
+        text_content = []
+
+        for sheet_name in wb.sheet_names():
+            sheet = wb.sheet_by_name(sheet_name)
+            sheet_text = [f"Foglio: {sheet_name}"]
+
+            for row_idx in range(sheet.nrows):
+                row = sheet.row_values(row_idx)
+                # Extract non-empty cell values
+                row_data = [str(cell) for cell in row if cell != ""]
+                if row_data:
+                    sheet_text.append(" | ".join(row_data))
+
+            if len(sheet_text) > 1:  # More than just the sheet name
+                text_content.extend(sheet_text)
+                text_content.append("")  # Empty line between sheets
+
+        return '\n'.join(text_content)
+    except ImportError:
+        print("xlrd non disponibile per file .xls - considera installazione: pip install xlrd")
+        return f"Contenuto Excel (.xls): {os.path.basename(file_path)} - Richiede xlrd per estrazione completa"
+    except Exception as e:
+        print(f"Errore estrazione XLS: {e}")
+        return ""
+
+def extract_text_from_csv(file_path: str) -> str:
+    """Extract text from CSV files"""
+    try:
+        import csv
+        text_content = []
+        encoding = 'utf-8'
+
+        # Try to detect encoding
+        try:
+            with open(file_path, 'rb') as f:
+                raw = f.read()
+                enc = chardet.detect(raw)['encoding']
+                if enc:
+                    encoding = enc
+        except:
+            pass
+
+        with open(file_path, 'r', encoding=encoding) as f:
+            # Try to detect delimiter
+            sample = f.read(1024)
+            f.seek(0)
+            sniffer = csv.Sniffer()
+            delimiter = sniffer.sniff(sample).delimiter
+
+            reader = csv.reader(f, delimiter=delimiter)
+            for row_idx, row in enumerate(reader):
+                # Extract non-empty cell values
+                row_data = [str(cell) for cell in row if cell != ""]
+                if row_data:
+                    text_content.append(" | ".join(row_data))
+
+        return '\n'.join(text_content)
+    except Exception as e:
+        print(f"Errore estrazione CSV: {e}")
+        return ""
+
 def get_text_extractor(file_extension: str):
-    extractors = {'.pdf': extract_text_from_pdf, '.docx': extract_text_from_docx, '.rtf': extract_text_from_rtf, '.html': extract_text_from_html, '.htm': extract_text_from_html, '.txt': extract_text_from_txt}
+    extractors = {
+        # Text Documents
+        '.pdf': extract_text_from_pdf,
+        '.docx': extract_text_from_docx,
+        '.doc': extract_text_from_doc,  # Use dedicated .doc extractor
+        '.rtf': extract_text_from_rtf,
+        '.html': extract_text_from_html,
+        '.htm': extract_text_from_html,
+        '.txt': extract_text_from_txt,
+
+        # Presentations
+        '.pptx': extract_text_from_pptx,
+        '.ppt': extract_text_from_ppt,
+
+        # Spreadsheets
+        '.xlsx': extract_text_from_xlsx,
+        '.xls': extract_text_from_xls,
+        '.csv': extract_text_from_csv,
+    }
     return extractors.get(file_extension.lower())
 
 def classify_document(text_content):
@@ -122,24 +288,32 @@ def process_document_task(self, file_path):
     file_name = os.path.basename(file_path)
     lock_file = file_path + ".lock"
 
+    # Check for existing lock with timeout
     if os.path.exists(lock_file):
         lock_age = time.time() - os.path.getmtime(lock_file)
-        if lock_age < 360:
-            update_status(f"In attesa, file già in elaborazione", file_name)
-            raise self.retry(countdown=60, max_retries=5)
+        if lock_age < 600:  # Increased timeout to 10 minutes
+            update_status(f"File già in elaborazione da {lock_age:.0f}s", file_name)
+            print(f"⏳ {file_name} già in elaborazione, attendo...")
+            return {'status': 'already_processing', 'file_name': file_name}
         else:
-            print(f"⚠️ Rimuovo lock obsoleto per {file_name}")
+            print(f"⚠️ Rimuovo lock obsoleto per {file_name} (età: {lock_age:.0f}s)")
             os.remove(lock_file)
 
     try:
-        with open(lock_file, "w") as f: f.write(str(os.getpid()))
+        # Create lock file atomically
+        try:
+            with open(lock_file, "w") as f:
+                f.write(f"{os.getpid()},{time.time()}")
+        except Exception as e:
+            print(f"❌ Errore creazione lock per {file_name}: {e}")
+            return {'status': 'lock_error', 'file_name': file_name}
 
         initialize_services()
         setup_database()
-        
+
         if Settings.llm is None or Settings.embed_model is None:
             raise ConnectionError("Servizi AI non disponibili. Controlla la connessione e i modelli.")
-            
+
         update_status("Avviato processamento", file_name)
         
         # 1. ESTRAZIONE TESTO
@@ -188,12 +362,11 @@ def process_document_task(self, file_path):
         update_status("Indicizzazione...", file_name)
         doc.metadata.update({"file_name": file_name, "title": metadata.title, "authors": json.dumps(metadata.authors), "publication_year": metadata.publication_year, "category_id": category_id, "category_name": category_full_name})
 
-        # Crea storage context senza cercare di caricare l'index esistente
+        # Crea storage context per l'indicizzazione
         from llama_index.core.storage.docstore import SimpleDocumentStore
         from llama_index.core.storage.index_store import SimpleIndexStore
         from llama_index.core.vector_stores import SimpleVectorStore
 
-        # Crea storage context vuoto per il primo avvio
         storage_context = StorageContext.from_defaults(
             docstore=SimpleDocumentStore(),
             vector_store=SimpleVectorStore(),
@@ -201,36 +374,49 @@ def process_document_task(self, file_path):
             persist_dir=DB_STORAGE_DIR
         )
 
-        try:
-            # Verifica se esiste un index esistente
-            index_exists = os.path.exists(os.path.join(DB_STORAGE_DIR, "docstore.json"))
+        max_index_retries = 3
+        index_created = False
 
-            if index_exists:
-                print(f"📚 Caricamento index esistente da {DB_STORAGE_DIR}")
-                # Se esiste, carica l'index esistente e aggiungici il documento
-                index = load_index_from_storage(storage_context)
-                index.insert(doc)
-                print("✅ Documento aggiunto all'index esistente")
-            else:
-                print(f"🆕 Creazione nuovo index in {DB_STORAGE_DIR}")
-                # Se non esiste, crea un nuovo index
-                index = VectorStoreIndex.from_documents([doc], storage_context=storage_context)
-                print("✅ Nuovo index creato con successo")
-
-            index.storage_context.persist(persist_dir=DB_STORAGE_DIR)
-            print("💾 Index salvato su disco")
-
-        except Exception as e:
-            # Se c'è un errore, crea un nuovo index da zero
-            print(f"⚠️ Errore con index esistente: {e}. Creo nuovo index da zero.")
+        for attempt in range(max_index_retries):
             try:
-                index = VectorStoreIndex.from_documents([doc], storage_context=storage_context)
+                # Verifica se esiste un index esistente
+                index_exists = os.path.exists(os.path.join(DB_STORAGE_DIR, "docstore.json"))
+
+                if index_exists and not index_created:
+                    print(f"📚 Caricamento index esistente da {DB_STORAGE_DIR} (tentativo {attempt + 1})")
+                    # Se esiste, carica l'index esistente e aggiungici il documento
+                    index = load_index_from_storage(storage_context)
+                    index.insert(doc)
+                    print("✅ Documento aggiunto all'index esistente")
+                else:
+                    print(f"🆕 Creazione nuovo index in {DB_STORAGE_DIR} (tentativo {attempt + 1})")
+                    # Se non esiste, crea un nuovo index
+                    index = VectorStoreIndex.from_documents([doc], storage_context=storage_context)
+                    print("✅ Nuovo index creato con successo")
+                    index_created = True
+
                 index.storage_context.persist(persist_dir=DB_STORAGE_DIR)
-                print("✅ Nuovo index creato dopo errore")
-            except Exception as e2:
-                error_msg = f"Errore critico creazione index: {e2}"
-                print(f"❌ {error_msg}")
-                raise ValueError(error_msg)
+                print("💾 Index salvato su disco")
+                break  # Success, exit retry loop
+
+            except Exception as e:
+                print(f"⚠️ Errore indicizzazione tentativo {attempt + 1}: {e}")
+                if attempt == max_index_retries - 1:
+                    # Last attempt failed, raise the error
+                    error_msg = f"Errore critico creazione index dopo {max_index_retries} tentativi: {e}"
+                    print(f"❌ {error_msg}")
+                    raise ValueError(error_msg)
+                else:
+                    # Wait before retry
+                    print(f"⏳ Attendo 5 secondi prima del prossimo tentativo...")
+                    time.sleep(5)
+                    # Reset storage context for retry
+                    storage_context = StorageContext.from_defaults(
+                        docstore=SimpleDocumentStore(),
+                        vector_store=SimpleVectorStore(),
+                        index_store=SimpleIndexStore(),
+                        persist_dir=DB_STORAGE_DIR
+                    )
 
         # 5. SALVATAGGIO SU DB E ARCHIVIAZIONE
         update_status("Salvataggio finale...", file_name)
@@ -258,15 +444,22 @@ def process_document_task(self, file_path):
         # Non spostare in errore se è un problema di configurazione AI
         if "LLM non disponibile" in str(e) or "Servizi AI non disponibili" in str(e):
             print("⚠️ Errore di configurazione AI - non sposto il file in errore")
-            raise
+            # Don't raise here, just return an error status
+            return {'status': 'ai_service_error', 'file_name': file_name, 'error': str(e)}
 
         # Sposta in errore solo per errori reali del documento
         error_folder = os.path.join(DOCS_TO_PROCESS_DIR, "_error")
         os.makedirs(error_folder, exist_ok=True)
         if os.path.exists(file_path):
-            print(f"📁 Sposto {file_name} nella cartella errori")
-            shutil.move(file_path, os.path.join(error_folder, file_name))
-        raise
+            try:
+                print(f"📁 Sposto {file_name} nella cartella errori")
+                shutil.move(file_path, os.path.join(error_folder, file_name))
+                print(f"✅ File {file_name} spostato nella cartella errori")
+            except Exception as move_error:
+                print(f"⚠️ Errore spostamento file {file_name}: {move_error}")
+
+        # Return error status instead of raising
+        return {'status': 'processing_error', 'file_name': file_name, 'error': str(e)}
     finally:
         if os.path.exists(lock_file):
             os.remove(lock_file)
