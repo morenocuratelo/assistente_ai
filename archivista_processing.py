@@ -358,75 +358,71 @@ def process_document_task(self, file_path):
             print(f"⚠️ Errore parsing metadati JSON: {e}. Response: {str(response)[:200]}...")
             metadata = PaperMetadata(title=file_name, authors=[], publication_year=None)
 
-        # 4. INDICIZZAZIONE
+        # 4. INDICIZZAZIONE (LOGICA SEMPLIFICATA E ATOMICA)
         update_status("Indicizzazione...", file_name)
         doc.metadata.update({"file_name": file_name, "title": metadata.title, "authors": json.dumps(metadata.authors), "publication_year": metadata.publication_year, "category_id": category_id, "category_name": category_full_name})
 
-        # Crea storage context per l'indicizzazione
+        # Crea storage context per l'indicizzazione con ChromaVectorStore
         from llama_index.core.storage.docstore import SimpleDocumentStore
         from llama_index.core.storage.index_store import SimpleIndexStore
-        from llama_index.core.vector_stores import SimpleVectorStore
+
+        # Crea/ottiene collezione ChromaDB
+        try:
+            import chromadb
+            from llama_index.vector_stores.chroma import ChromaVectorStore
+
+            db = chromadb.PersistentClient(path=DB_STORAGE_DIR)
+            chroma_collection = db.get_or_create_collection("documents")
+            vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+
+            print(f"🚀 Utilizzo ChromaVectorStore per alte performance")
+
+        except ImportError:
+            print(f"⚠️ ChromaDB non disponibile, fallback a SimpleVectorStore")
+            from llama_index.core.vector_stores import SimpleVectorStore
+            vector_store = SimpleVectorStore()
 
         storage_context = StorageContext.from_defaults(
             docstore=SimpleDocumentStore(),
-            vector_store=SimpleVectorStore(),
+            vector_store=vector_store,
             index_store=SimpleIndexStore(),
             persist_dir=DB_STORAGE_DIR
         )
 
-        max_index_retries = 3
-        index_created = False
+        try:
+            # Tenta di caricare un indice esistente
+            storage_context = StorageContext.from_defaults(persist_dir=DB_STORAGE_DIR, vector_store=vector_store)
+            index = load_index_from_storage(storage_context)
+            print("✅ Indice esistente caricato. Aggiungo nuovo documento...")
+            index.insert(doc)
 
-        for attempt in range(max_index_retries):
-            try:
-                # Verifica se esiste un index esistente
-                index_exists = os.path.exists(os.path.join(DB_STORAGE_DIR, "docstore.json"))
+        except FileNotFoundError:
+            # Se nessun indice esiste, creane uno nuovo
+            print("🆕 Nessun indice trovato. Ne creo uno nuovo.")
+            storage_context = StorageContext.from_defaults(vector_store=vector_store)
+            index = VectorStoreIndex.from_documents([doc], storage_context=storage_context)
 
-                if index_exists and not index_created:
-                    print(f"📚 Caricamento index esistente da {DB_STORAGE_DIR} (tentativo {attempt + 1})")
-                    # Se esiste, carica l'index esistente e aggiungici il documento
-                    index = load_index_from_storage(storage_context)
-                    index.insert(doc)
-                    print("✅ Documento aggiunto all'index esistente")
-                else:
-                    print(f"🆕 Creazione nuovo index in {DB_STORAGE_DIR} (tentativo {attempt + 1})")
-                    # Se non esiste, crea un nuovo index
-                    index = VectorStoreIndex.from_documents([doc], storage_context=storage_context)
-                    print("✅ Nuovo index creato con successo")
-                    index_created = True
+        # A prescindere da cosa sia successo, salva lo stato finale
+        index.storage_context.persist(persist_dir=DB_STORAGE_DIR)
+        print("💾 Indice salvato correttamente su disco.")
 
-                index.storage_context.persist(persist_dir=DB_STORAGE_DIR)
-                print("💾 Index salvato su disco")
-                break  # Success, exit retry loop
-
-            except Exception as e:
-                print(f"⚠️ Errore indicizzazione tentativo {attempt + 1}: {e}")
-                if attempt == max_index_retries - 1:
-                    # Last attempt failed, raise the error
-                    error_msg = f"Errore critico creazione index dopo {max_index_retries} tentativi: {e}"
-                    print(f"❌ {error_msg}")
-                    raise ValueError(error_msg)
-                else:
-                    # Wait before retry
-                    print(f"⏳ Attendo 5 secondi prima del prossimo tentativo...")
-                    time.sleep(5)
-                    # Reset storage context for retry
-                    storage_context = StorageContext.from_defaults(
-                        docstore=SimpleDocumentStore(),
-                        vector_store=SimpleVectorStore(),
-                        index_store=SimpleIndexStore(),
-                        persist_dir=DB_STORAGE_DIR
-                    )
+        # 4.5. GENERAZIONE ANTEPRIMA
+        update_status("Generazione anteprima...", file_name)
+        # Usa il prompt manager per caricare il template di anteprima
+        preview_prompt = PromptTemplate(prompt_manager.get_prompt("FORMAT_PREVIEW_PROMPT"))
+        preview_query = preview_prompt.format(raw_text=full_text[:2500])  # Usa primi 2500 caratteri
+        preview_response = Settings.llm.complete(preview_query)
+        formatted_preview = str(preview_response).strip()
 
         # 5. SALVATAGGIO SU DB E ARCHIVIAZIONE
         update_status("Salvataggio finale...", file_name)
         with db_connect() as conn:
             conn.cursor().execute("""
-                INSERT INTO papers (file_name, title, authors, publication_year, category_id, category_name, processed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(file_name) DO UPDATE SET
+                INSERT INTO papers (file_name, title, authors, publication_year, category_id, category_name, formatted_preview, processed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(file_name) DO UPDATE SET
                 title=excluded.title, authors=excluded.authors, publication_year=excluded.publication_year,
-                category_id=excluded.category_id, category_name=excluded.category_name;
-            """, (file_name, metadata.title, json.dumps(metadata.authors), metadata.publication_year, category_id, category_full_name, datetime.now().isoformat()))
+                category_id=excluded.category_id, category_name=excluded.category_name, formatted_preview=excluded.formatted_preview;
+            """, (file_name, metadata.title, json.dumps(metadata.authors), metadata.publication_year, category_id, category_full_name, formatted_preview, datetime.now().isoformat()))
             conn.commit()
 
         destination_folder = os.path.join(CATEGORIZED_ARCHIVE_DIR, part_id, chapter_id)
@@ -464,6 +460,164 @@ def process_document_task(self, file_path):
         if os.path.exists(lock_file):
             os.remove(lock_file)
             print(f"🔓 Lock rilasciato per {file_name}")
+
+@celery_app.task(name='archivista.delete_document')
+def delete_document_task(file_name):
+    """
+    Task di cancellazione atomica: elimina un documento da indice, database e filesystem.
+    Tutte le operazioni devono riuscire o fallire atomicamente per garantire consistenza.
+    """
+    lock_file = os.path.join(DB_STORAGE_DIR, f"delete_{file_name}.lock")
+
+    # Check for existing deletion lock
+    if os.path.exists(lock_file):
+        lock_age = time.time() - os.path.getmtime(lock_file)
+        if lock_age < 300:  # 5 minutes timeout for deletion
+            print(f"⏳ Cancellazione di {file_name} già in corso, attendo...")
+            return {'status': 'already_deleting', 'file_name': file_name}
+        else:
+            print(f"⚠️ Rimuovo lock obsoleto per cancellazione di {file_name}")
+            os.remove(lock_file)
+
+    try:
+        # Create deletion lock
+        with open(lock_file, "w") as f:
+            f.write(f"{os.getpid()},{time.time()}")
+
+        print(f"🗑️ Inizio cancellazione atomica di {file_name}")
+
+        # STEP 1: Trova informazioni documento nel database
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT category_id, category_name FROM papers WHERE file_name = ?", (file_name,))
+            row = cursor.fetchone()
+
+            if not row:
+                raise ValueError(f"Documento {file_name} non trovato nel database")
+
+            category_id = row['category_id']
+            category_name = row['category_name']
+
+        print(f"📋 Documento trovato: {file_name} in categoria {category_id}")
+
+        # STEP 2: Rimuovi dall'indice vettoriale
+        try:
+            from llama_index.core.storage.docstore import SimpleDocumentStore
+            from llama_index.core.storage.index_store import SimpleIndexStore
+
+            # Crea/ottiene collezione ChromaDB per cancellazione
+            try:
+                import chromadb
+                from llama_index.vector_stores.chroma import ChromaVectorStore
+
+                db = chromadb.PersistentClient(path=DB_STORAGE_DIR)
+                chroma_collection = db.get_or_create_collection("documents")
+                vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+                print(f"🚀 Utilizzo ChromaVectorStore per cancellazione")
+
+            except ImportError:
+                print(f"⚠️ ChromaDB non disponibile per cancellazione, fallback a SimpleVectorStore")
+                from llama_index.core.vector_stores import SimpleVectorStore
+                vector_store = SimpleVectorStore()
+
+            storage_context = StorageContext.from_defaults(
+                docstore=SimpleDocumentStore(),
+                vector_store=vector_store,
+                index_store=SimpleIndexStore(),
+                persist_dir=DB_STORAGE_DIR
+            )
+
+            # Carica l'index esistente
+            index = load_index_from_storage(storage_context)
+
+            # Trova il documento per file_name nel metadata
+            documents_to_delete = []
+            for doc_id, doc in index.docstore.docs.items():
+                if doc.metadata.get('file_name') == file_name:
+                    documents_to_delete.append(doc_id)
+
+            if documents_to_delete:
+                # Rimuovi documenti dall'index
+                for doc_id in documents_to_delete:
+                    index.delete_ref_doc(doc_id, delete_from_docstore=True)
+                print(f"✅ Rimosso {len(documents_to_delete)} documento/i dall'index vettoriale")
+            else:
+                print(f"⚠️ Documento {file_name} non trovato nell'index vettoriale")
+
+            # Salva l'index aggiornato
+            index.storage_context.persist(persist_dir=DB_STORAGE_DIR)
+            print("💾 Index vettoriale aggiornato dopo cancellazione")
+
+        except FileNotFoundError:
+            print(f"⚠️ Index non esistente durante cancellazione di {file_name}")
+        except Exception as index_error:
+            print(f"⚠️ Errore rimozione dall'index: {index_error}")
+            # Continuiamo con le altre operazioni
+
+        # STEP 3: Rimuovi dal database
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM papers WHERE file_name = ?", (file_name,))
+            deleted_rows = cursor.rowcount
+            conn.commit()
+
+        if deleted_rows > 0:
+            print(f"✅ Rimossa {deleted_rows} riga/e dal database per {file_name}")
+        else:
+            print(f"⚠️ Nessuna riga rimossa dal database per {file_name}")
+
+        # STEP 4: Cancella file fisico
+        file_deleted = False
+        if category_id and category_id != "UNCATEGORIZED/C00":
+            # Trova il percorso del file categorizzato
+            part_id, chapter_id = category_id.split('/')
+            file_path = os.path.join(CATEGORIZED_ARCHIVE_DIR, part_id, chapter_id, file_name)
+
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    file_deleted = True
+                    print(f"✅ File fisico eliminato: {file_path}")
+                except Exception as file_error:
+                    print(f"⚠️ Errore eliminazione file {file_path}: {file_error}")
+            else:
+                print(f"⚠️ File fisico non trovato: {file_path}")
+        else:
+            print(f"⚠️ Categoria non valida per {file_name}: {category_id}")
+
+        # STEP 5: Verifica consistenza finale
+        remaining_issues = []
+
+        # Controlla se il documento è ancora nel database
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) as count FROM papers WHERE file_name = ?", (file_name,))
+            if cursor.fetchone()['count'] > 0:
+                remaining_issues.append("Documento ancora presente nel database")
+
+        print(f"🗑️ Cancellazione completata per {file_name}")
+        return {
+            'status': 'success',
+            'file_name': file_name,
+            'index_removed': len(documents_to_delete) if 'documents_to_delete' in locals() else 0,
+            'db_rows_deleted': deleted_rows,
+            'file_deleted': file_deleted,
+            'warnings': remaining_issues
+        }
+
+    except Exception as e:
+        error_msg = f"Errore durante cancellazione di {file_name}: {str(e)}"
+        print(f"❌ {error_msg}")
+        return {
+            'status': 'error',
+            'file_name': file_name,
+            'error': str(e)
+        }
+    finally:
+        # Rimuovi lock di cancellazione
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+            print(f"🔓 Lock di cancellazione rilasciato per {file_name}")
 
 @celery_app.task(name='archivista.cleanup_old_data')
 def cleanup_old_data():

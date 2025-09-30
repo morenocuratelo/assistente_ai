@@ -36,3 +36,6 @@ duckduckgo-search>=8.0.0
 celery~=5.5.0
 redis~=5.2.0
 kombu~=5.5.0
+
+# Vector Database for High Performance
+chromadb>=0.4.0
