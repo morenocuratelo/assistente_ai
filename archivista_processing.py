@@ -170,28 +170,67 @@ def process_document_task(self, file_path):
         metadata_query = metadata_prompt.format(document_text=full_text[:4000], category_name=category_full_name)
         response = Settings.llm.complete(metadata_query)
         try:
-            metadata = PaperMetadata(**json.loads(str(response)))
-        except (json.JSONDecodeError, TypeError):
+            response_text = str(response).strip()
+            # Try to extract JSON from the response if it contains extra text
+            if '{' in response_text and '}' in response_text:
+                start_idx = response_text.find('{')
+                end_idx = response_text.rfind('}') + 1
+                json_str = response_text[start_idx:end_idx]
+                metadata = PaperMetadata(**json.loads(json_str))
+            else:
+                # Fallback if no JSON found
+                metadata = PaperMetadata(title=file_name, authors=[], publication_year=None)
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            print(f"⚠️ Errore parsing metadati JSON: {e}. Response: {str(response)[:200]}...")
             metadata = PaperMetadata(title=file_name, authors=[], publication_year=None)
 
         # 4. INDICIZZAZIONE
         update_status("Indicizzazione...", file_name)
         doc.metadata.update({"file_name": file_name, "title": metadata.title, "authors": json.dumps(metadata.authors), "publication_year": metadata.publication_year, "category_id": category_id, "category_name": category_full_name})
-        
-        storage_context = StorageContext.from_defaults(persist_dir=DB_STORAGE_DIR)
+
+        # Crea storage context senza cercare di caricare l'index esistente
+        from llama_index.core.storage.docstore import SimpleDocumentStore
+        from llama_index.core.storage.index_store import SimpleIndexStore
+        from llama_index.core.vector_stores import SimpleVectorStore
+
+        # Crea storage context vuoto per il primo avvio
+        storage_context = StorageContext.from_defaults(
+            docstore=SimpleDocumentStore(),
+            vector_store=SimpleVectorStore(),
+            index_store=SimpleIndexStore(),
+            persist_dir=DB_STORAGE_DIR
+        )
 
         try:
-            if os.path.exists(os.path.join(DB_STORAGE_DIR, "docstore.json")):
+            # Verifica se esiste un index esistente
+            index_exists = os.path.exists(os.path.join(DB_STORAGE_DIR, "docstore.json"))
+
+            if index_exists:
+                print(f"📚 Caricamento index esistente da {DB_STORAGE_DIR}")
+                # Se esiste, carica l'index esistente e aggiungici il documento
                 index = load_index_from_storage(storage_context)
                 index.insert(doc)
+                print("✅ Documento aggiunto all'index esistente")
             else:
+                print(f"🆕 Creazione nuovo index in {DB_STORAGE_DIR}")
+                # Se non esiste, crea un nuovo index
                 index = VectorStoreIndex.from_documents([doc], storage_context=storage_context)
+                print("✅ Nuovo index creato con successo")
+
             index.storage_context.persist(persist_dir=DB_STORAGE_DIR)
+            print("💾 Index salvato su disco")
+
         except Exception as e:
-            # Se c'è un errore con l'index esistente, creane uno nuovo
-            print(f"Errore con index esistente: {e}. Creo nuovo index.")
-            index = VectorStoreIndex.from_documents([doc], storage_context=storage_context)
-            index.storage_context.persist(persist_dir=DB_STORAGE_DIR)
+            # Se c'è un errore, crea un nuovo index da zero
+            print(f"⚠️ Errore con index esistente: {e}. Creo nuovo index da zero.")
+            try:
+                index = VectorStoreIndex.from_documents([doc], storage_context=storage_context)
+                index.storage_context.persist(persist_dir=DB_STORAGE_DIR)
+                print("✅ Nuovo index creato dopo errore")
+            except Exception as e2:
+                error_msg = f"Errore critico creazione index: {e2}"
+                print(f"❌ {error_msg}")
+                raise ValueError(error_msg)
 
         # 5. SALVATAGGIO SU DB E ARCHIVIAZIONE
         update_status("Salvataggio finale...", file_name)
@@ -213,10 +252,19 @@ def process_document_task(self, file_path):
 
     except Exception as e:
         error_msg = f"Errore: {str(e)}"
+        print(f"❌ ERRORE nel processamento di {file_name}: {error_msg}")
         update_status(error_msg, file_name)
+
+        # Non spostare in errore se è un problema di configurazione AI
+        if "LLM non disponibile" in str(e) or "Servizi AI non disponibili" in str(e):
+            print("⚠️ Errore di configurazione AI - non sposto il file in errore")
+            raise
+
+        # Sposta in errore solo per errori reali del documento
         error_folder = os.path.join(DOCS_TO_PROCESS_DIR, "_error")
         os.makedirs(error_folder, exist_ok=True)
         if os.path.exists(file_path):
+            print(f"📁 Sposto {file_name} nella cartella errori")
             shutil.move(file_path, os.path.join(error_folder, file_name))
         raise
     finally:

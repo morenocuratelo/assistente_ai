@@ -23,12 +23,7 @@ def setup_database():
     """
     # Create directory if it doesn't exist
     os.makedirs(DB_STORAGE_DIR, exist_ok=True)
-    
-    # If no database exists yet, just create directories and return
-    if not os.path.exists(METADATA_DB_FILE):
-        print("✅ Directory del database creata. Il database verrà inizializzato quando necessario.")
-        return
-        
+
     try:
         with db_connect() as conn:
             cursor = conn.cursor()
@@ -45,11 +40,10 @@ def setup_database():
                 )
             """)
             conn.commit()
-            print("✅ Database verificato e pronto.")
+            print("✅ Database verificato e tabella 'papers' pronta.")
     except sqlite3.Error as e:
-        print(f"⚠️ Nota: {e}")
-        # Don't show error to user, just log it
-        pass
+        print(f"❌ Errore nella creazione della tabella database: {e}")
+        raise
 
 @st.cache_data(ttl=10)
 def get_papers_dataframe():
