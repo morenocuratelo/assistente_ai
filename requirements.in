@@ -11,6 +11,7 @@ pandas>=2.2.0
 matplotlib>=3.10.0
 python-dotenv>=1.1.0
 streamlit-autorefresh>=1.0.0
+streamlit-quill>=0.0.3
 
 # Document Processing
 PyMuPDF>=1.26.0
