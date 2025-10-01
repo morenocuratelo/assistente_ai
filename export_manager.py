@@ -6,7 +6,7 @@ import pandas as pd
 import json
 import os
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import base64
 import io
 from file_utils import get_papers_dataframe

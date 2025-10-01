@@ -2,12 +2,14 @@
 Modulo per le statistiche e analisi dell'archivio documentale.
 Fornisce funzionalità per dashboard, metriche e analisi dei dati.
 """
+import streamlit as st
 import pandas as pd
 import sqlite3
 import os
 from datetime import datetime, timedelta
 from collections import Counter
 import json
+from typing import List, Dict, Any
 from file_utils import db_connect, get_papers_dataframe
 
 # --- CONFIGURAZIONE ---

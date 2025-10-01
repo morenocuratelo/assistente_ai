@@ -7,7 +7,7 @@ import sqlite3
 import os
 import json
 from datetime import datetime
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from file_utils import db_connect, get_papers_dataframe, update_paper_metadata
 
 # --- CONFIGURAZIONE ---

@@ -3,6 +3,7 @@ import sqlite3
 import os
 import pandas as pd
 import json
+from knowledge_structure import KNOWLEDGE_BASE_STRUCTURE
 
 # --- CONFIGURAZIONE ---
 DB_STORAGE_DIR = "db_memoria"
@@ -143,3 +144,136 @@ def cleanup_missing_files():
     except Exception as e:
         print(f"❌ Errore durante la pulizia del database: {e}")
         return 0
+
+def get_archive_tree():
+    """
+    Scans the categorized archive directory and builds a hierarchical tree structure
+    with file metadata from the database. This serves as the single source of truth
+    for the file explorer interface.
+
+    Returns:
+        dict: Nested structure representing the archive tree with the following format:
+        {
+            "P1_IL_PALCOSCENICO_COSMICO_E_BIOLOGICO": {
+                "name": "Parte I: Il Palcoscenico Cosmico e Biologico",
+                "path": "P1_IL_PALCOSCENICO_COSMICO_E_BIOLOGICO",
+                "type": "category",
+                "children": {
+                    "C01": {
+                        "name": "L'Universo e la Terra - La Nascita del Contesto",
+                        "path": "P1_IL_PALCOSCENICO_COSMICO_E_BIOLOGICO/C01",
+                        "type": "category",
+                        "files": [...],
+                        "subdirectories": {...}
+                    }
+                }
+            }
+        }
+    """
+    try:
+        # First, get all papers from database for efficient lookup
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM papers")
+            papers = cursor.fetchall()
+
+        # Create a lookup dictionary for papers by file_name
+        papers_dict = {paper['file_name']: paper for paper in papers}
+
+        # Initialize the tree structure
+        archive_tree = {}
+
+        # Check if archive directory exists
+        if not os.path.exists(CATEGORIZED_ARCHIVE_DIR):
+            print(f"⚠️ Archive directory '{CATEGORIZED_ARCHIVE_DIR}' not found. Returning empty tree.")
+            return archive_tree
+
+        # Walk through the directory structure
+        for root, dirs, files in os.walk(CATEGORIZED_ARCHIVE_DIR):
+            # Calculate relative path from archive directory
+            rel_path = os.path.relpath(root, CATEGORIZED_ARCHIVE_DIR)
+            if rel_path == '.':
+                rel_path = ''
+
+            # Split path into parts for tree navigation
+            path_parts = rel_path.split(os.sep) if rel_path else []
+
+            # Navigate to the correct position in the tree
+            current_node = archive_tree
+
+            # Build the path through the tree
+            for i, part in enumerate(path_parts):
+                if part not in current_node:
+                    # Determine if this is a part (P1-P5) or chapter (C01-C27)
+                    if part.startswith('P') and len(part) > 10:  # Part identifier
+                        # Find matching part in knowledge structure
+                        for part_key, part_data in KNOWLEDGE_BASE_STRUCTURE.items():
+                            if part_key == part:
+                                current_node[part] = {
+                                    "name": part_data["name"],
+                                    "path": part,
+                                    "type": "part",
+                                    "children": {}
+                                }
+                                break
+                    else:  # Chapter identifier
+                        # Find the parent part and chapter info
+                        if path_parts and path_parts[0] in KNOWLEDGE_BASE_STRUCTURE:
+                            parent_part = KNOWLEDGE_BASE_STRUCTURE[path_parts[0]]
+                            if part in parent_part["chapters"]:
+                                current_node[part] = {
+                                    "name": parent_part["chapters"][part],
+                                    "path": f"{path_parts[0]}/{part}",
+                                    "type": "chapter",
+                                    "files": [],
+                                    "subdirectories": {}
+                                }
+
+                current_node = current_node[part]
+                if current_node["type"] in ["part", "chapter"]:
+                    if "children" not in current_node:
+                        current_node["children"] = {}
+                    current_node = current_node["children"]
+
+            # Process files in current directory
+            for file_name in files:
+                file_path = os.path.join(root, file_name)
+
+                # Get file metadata
+                file_stat = os.stat(file_path)
+                file_size = file_stat.st_size
+                file_mtime = file_stat.st_mtime
+
+                # Get metadata from database
+                paper_metadata = papers_dict.get(file_name, {})
+
+                # Create file object
+                file_obj = {
+                    "name": file_name,
+                    "path": os.path.relpath(file_path, CATEGORIZED_ARCHIVE_DIR),
+                    "type": "file",
+                    "size": file_size,
+                    "modified_time": file_mtime,
+                    "extension": os.path.splitext(file_name)[1].lower(),
+                    # Database metadata
+                    "title": paper_metadata.get('title', file_name),
+                    "authors": paper_metadata.get('authors', ''),
+                    "publication_year": paper_metadata.get('publication_year'),
+                    "category_id": paper_metadata.get('category_id', ''),
+                    "category_name": paper_metadata.get('category_name', ''),
+                    "formatted_preview": paper_metadata.get('formatted_preview', ''),
+                    "processed_at": paper_metadata.get('processed_at', ''),
+                    # Processing status
+                    "status": "indexed" if paper_metadata else "unindexed"
+                }
+
+                # Add file to current directory's files list
+                if "files" not in current_node:
+                    current_node["files"] = []
+                current_node["files"].append(file_obj)
+
+        return archive_tree
+
+    except Exception as e:
+        print(f"❌ Errore nella creazione dell'albero dell'archivio: {e}")
+        return {}
