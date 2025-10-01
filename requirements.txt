@@ -382,6 +382,8 @@ pyyaml==6.0.3
     #   huggingface-hub
     #   llama-index-core
     #   transformers
+pypandoc==1.13
+    # via -r requirements.in
 redis==5.2.1
     # via -r requirements.in
 referencing==0.36.2
@@ -526,3 +528,5 @@ yarl==1.20.1
 
 # The following packages are considered to be unsafe in a requirements file:
 # setuptools
+p y p e r c l i p = = 1 . 1 1 . 0  
+ 

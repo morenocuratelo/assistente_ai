@@ -11,43 +11,68 @@ Questa guida spiega come eseguire Archivista AI utilizzando Docker e Docker Comp
 
 ## 🚀 Avvio Rapido con Docker
 
-### 1. Clona il Repository
+### ⚡ Iniziamo in 2 minuti!
+
+#### Passo 1: Avvia Tutto Automaticamente
 ```bash
+# Scarica il progetto e avvia tutti i servizi
 git clone <repository-url>
 cd archivista-ai
-```
 
-### 2. Avvia Tutti i Servizi
-```bash
-# Avvia tutti i servizi in background
+# Avvia tutti i servizi con un comando
 docker-compose up -d
-
-# Visualizza i log in tempo reale
-docker-compose logs -f
 ```
 
-### 3. Verifica Ollama Host
+#### Passo 2: Verifica l'Installazione
+```bash
+# Controlla che tutti i servizi siano attivi
+docker-compose ps
+
+# Dovresti vedere:
+# NAME                COMMAND                  SERVICE             STATUS
+# archivista-redis    "docker-entrypoint.s…"   redis               running
+# archivista-webapp   "streamlit run main.…"   webapp              running
+# archivista-worker   "celery -A tasks wo…"   worker              running
+```
+
+#### Passo 3: Configura Ollama (IA)
 ```bash
 # Verifica che Ollama sia in esecuzione sul sistema host
 ollama list
 
-# Scarica i modelli necessari (sul sistema host)
-ollama pull llama3
-ollama pull llava-llama3
+# Se necessario, scarica i modelli richiesti
+ollama pull llama3        # Per l'indicizzazione
+ollama pull llava-llama3  # Per la chat multimodale
 ```
 
-### 4. Accedi all'Applicazione
-- **Webapp (Streamlit UI)**: http://localhost:8501
-- **Ollama API**: http://localhost:11434 (host)
-- **Redis**: localhost:6379
+#### Passo 4: Accedi all'Applicazione
+- 🌐 **Interfaccia Web**: http://localhost:8501
+- 📊 **Dashboard Monitoraggio**: http://localhost:5555 (Flower)
+- 🤖 **Ollama API**: http://localhost:11434 (host)
 
-### 4. Arresta i Servizi
+#### Passo 5: Test dell'Installazione
 ```bash
-# Arresta tutti i servizi
+# Test connessione Redis
+docker-compose exec redis redis-cli ping
+# Risposta attesa: PONG
+
+# Test worker Celery
+docker-compose logs worker
+
+# Test interfaccia web
+# Apri http://localhost:8501 e verifica che carichi
+```
+
+### 🔧 Arresto e Pulizia
+```bash
+# Arresta tutti i servizi (mantieni dati)
 docker-compose down
 
-# Arresta e rimuovi i volumi (cancella tutti i dati)
+# Arresta e rimuovi tutto (cancella dati)
 docker-compose down -v
+
+# Pulizia completa del sistema Docker
+docker system prune -a --volumes
 ```
 
 ## 📁 Struttura dei Servizi

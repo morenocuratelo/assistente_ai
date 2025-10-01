@@ -10,46 +10,44 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - documenti_da_processare:/app/documenti_da_processare
-      - Dall_Origine_alla_Complessita:/app/Dall_Origine_alla_Complessita
-      - db_memoria:/app/db_memoria
+      - //c/Etc/LLM/llava-llama3/assistente_ai/documenti_da_processare:/app/documenti_da_processare
+      - //c/Etc/LLM/llava-llama3/assistente_ai/Dall_Origine_alla_Complessita:/app/Dall_Origine_alla_Complessita
+      - //c/Etc/LLM/llava-llama3/assistente_ai/db_memoria:/app/db_memoria
     depends_on:
       - redis
     environment:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - REDIS_URL=redis://redis:6379/0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   worker:
     build: .
     command: celery -A celery_app.celery_app worker --loglevel=info
     volumes:
-      - documenti_da_processare:/app/documenti_da_processare
-      - Dall_Origine_alla_Complessita:/app/Dall_Origine_alla_Complessita
-      - db_memoria:/app/db_memoria
+      - //c/Etc/LLM/llava-llama3/assistente_ai/documenti_da_processare:/app/documenti_da_processare
+      - //c/Etc/LLM/llava-llama3/assistente_ai/Dall_Origine_alla_Complessita:/app/Dall_Origine_alla_Complessita
+      - //c/Etc/LLM/llava-llama3/assistente_ai/db_memoria:/app/db_memoria
     depends_on:
       - redis
     environment:
       - REDIS_URL=redis://redis:6379/0
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # --- NUOVO SERVIZIO PER LE TASK PIANIFICATE ---
   beat:
     build: .
     command: celery -A celery_app.celery_app beat --loglevel=info
     volumes:
-      - documenti_da_processare:/app/documenti_da_processare
-      - Dall_Origine_alla_Complessita:/app/Dall_Origine_alla_Complessita
-      - db_memoria:/app/db_memoria
+      - //c/Etc/LLM/llava-llama3/assistente_ai/documenti_da_processare:/app/documenti_da_processare
+      - //c/Etc/LLM/llava-llama3/assistente_ai/Dall_Origine_alla_Complessita:/app/Dall_Origine_alla_Complessita
+      - //c/Etc/LLM/llava-llama3/assistente_ai/db_memoria:/app/db_memoria
     depends_on:
       - redis
     environment:
       - REDIS_URL=redis://redis:6379/0
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
-
-volumes:
-  documenti_da_processare:
-    driver: local
-  Dall_Origine_alla_Complessita:
-    driver: local
-  db_memoria:
-    driver: local
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

@@ -1138,6 +1138,9 @@ def render_main_content():
         # Default fallback
         render_chat_view()
 
+# --- TABS CREATION ---
+tab_dashboard, tab_archive, tab_batch, tab_export, tab_chat = st.tabs(["📊 Dashboard", "📚 Archivio", "🔧 Batch", "📤 Esporta", "💬 Chat"])
+
 # --- TAB: DASHBOARD ---
 with tab_dashboard:
     st.header("📊 Dashboard Statistica")

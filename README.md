@@ -16,35 +16,51 @@ Archivista AI è un'applicazione web avanzata che utilizza l'intelligenza artifi
 
 ## 🚀 Avvio Rapido
 
-### Con Docker (Raccomandato)
+### ⚡ Iniziamo in 3 minuti!
+
+#### Opzione 1: Docker (Raccomandato - Più Semplice)
 
 ```bash
-# 1. Clona il repository
-git clone <repository-url>
-cd archivista-ai
-
-# 2. Avvia tutti i servizi
+# 1. Scarica e avvia tutto automaticamente
 docker-compose up -d
 
-# 3. Accedi all'applicazione
-# UI: http://localhost:8501
-# Monitor: http://localhost:5555
+# 2. Verifica che tutto funzioni
+docker-compose ps
+
+# 3. Apri l'applicazione
+# 🌐 Web UI: http://localhost:8501
+# 📊 Monitor: http://localhost:5555 (Flower dashboard)
 ```
 
-### Installazione Manuale
+#### Opzione 2: Installazione Manuale
 
 ```bash
-# 1. Installa Redis
-start_redis.bat  # Windows
+# 1. Installa e avvia Redis
+start_redis.bat
 
 # 2. Installa dipendenze Python
 pip install -r requirements.txt
 
-# 3. Avvia il worker Celery
+# 3. Avvia il worker in background
 start_celery_worker.bat
 
 # 4. Avvia l'applicazione
 streamlit run main.py
+
+# 5. Apri http://localhost:8501
+```
+
+#### ⚠️ Prerequisiti per Ollama (IA)
+
+Prima di iniziare, assicurati che **Ollama** sia installato e in esecuzione:
+
+```bash
+# Verifica modelli disponibili
+ollama list
+
+# Se necessario, scarica i modelli richiesti
+ollama pull llama3
+ollama pull llava-llama3
 ```
 
 ## 📋 Prerequisiti
@@ -248,6 +264,11 @@ docker-compose up --build -d
    - Verifica la connessione di rete
    - Controlla i log dell'applicazione
 
+6. **Errore modulo "statistics"**
+   - Il modulo `statistics.py` è stato rinominato in `archive_statistics.py`
+   - Se vedi errori di importazione, aggiorna i tuoi script
+   - Usa: `from archive_statistics import get_comprehensive_stats`
+
 ### Log e Debug
 
 ```bash
@@ -310,7 +331,7 @@ docker-compose exec worker bash
 
 ## 🔄 Changelog
 
-### Versione 1.3.0 (Alpha 1.3) - 2025-01-XX
+### Versione 1.3.1 (Alpha 1.3) - 2025-01-XX
 
 **🆕 Nuove Funzionalità:**
 - ✅ Architettura Celery completa per elaborazione asincrona
@@ -323,9 +344,11 @@ docker-compose exec worker bash
 - ✅ Ottimizzazione performance processamento
 - ✅ Migliore gestione errori e recovery
 - ✅ Interfaccia utente migliorata
-- ✅ Documentazione completa
+- ✅ Documentazione completa e aggiornata
+- ✅ Guida rapida di avvio semplificata
 
 **🐛 Bug Fixes:**
+- ✅ **Risolto conflitto modulo statistics**: Rinominato `statistics.py` in `archive_statistics.py` per evitare conflitti con il modulo standard Python
 - ✅ Risoluzione problemi di memoria
 - ✅ Fix gestione file di grandi dimensioni
 - ✅ Miglioramento stabilità worker
