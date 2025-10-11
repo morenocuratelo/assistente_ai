@@ -414,15 +414,109 @@ def process_document_task(self, file_path):
         preview_response = Settings.llm.complete(preview_query)
         formatted_preview = str(preview_response).strip()
 
+        # 4.6. ANALISI ACCADEMICA (parole chiave, task e grafo della conoscenza)
+        update_status("Analisi accademica...", file_name)
+        academic_metadata = {}
+        knowledge_entities = []
+        knowledge_relationships = []
+
+        # Estrazione parole chiave
+        try:
+            keywords_prompt = PromptTemplate(prompt_manager.get_prompt("ACADEMIC_KEYWORDS_PROMPT"))
+            keywords_query = keywords_prompt.format(document_text=full_text[:4000])
+            keywords_response = Settings.llm.complete(keywords_query)
+            keywords_text = str(keywords_response).strip()
+            # Try to parse JSON
+            try:
+                keywords_data = json.loads(keywords_text)
+                academic_metadata['keywords'] = keywords_data['keywords']
+            except (json.JSONDecodeError, KeyError):
+                print(f"⚠️ Impossibile parsare parole chiave JSON per {file_name}")
+                academic_metadata['keywords'] = []
+        except Exception as e:
+            print(f"⚠️ Errore estrazione parole chiave per {file_name}: {e}")
+            academic_metadata['keywords'] = []
+
+        # Estrazione entità concettuali per il grafo della conoscenza
+        try:
+            entities_prompt = PromptTemplate(prompt_manager.get_prompt("KNOWLEDGE_ENTITIES_PROMPT"))
+            entities_query = entities_prompt.format(document_text=full_text[:3000])
+            entities_response = Settings.llm.complete(entities_query)
+            entities_text = str(entities_response).strip()
+
+            # Try to parse JSON entities
+            try:
+                entities_data = json.loads(entities_text)
+                knowledge_entities = entities_data
+                print(f"✅ Estratte {len(knowledge_entities)} entità concettuali da {file_name}")
+            except (json.JSONDecodeError, KeyError):
+                print(f"⚠️ Impossibile parsare entità JSON per {file_name}")
+                knowledge_entities = []
+
+        except Exception as e:
+            print(f"⚠️ Errore estrazione entità per {file_name}: {e}")
+            knowledge_entities = []
+
+        # Estrazione relazioni concettuali (solo se abbiamo entità)
+        if knowledge_entities:
+            try:
+                entities_list = [f"- {e['entity_name']} ({e['entity_type']})" for e in knowledge_entities]
+                entities_list_text = "\n".join(entities_list)
+
+                relationships_prompt = PromptTemplate(prompt_manager.get_prompt("ENTITY_RELATIONSHIPS_PROMPT"))
+                relationships_query = relationships_prompt.format(
+                    document_text=full_text[:3000],
+                    entities_list=entities_list_text
+                )
+                relationships_response = Settings.llm.complete(relationships_query)
+                relationships_text = str(relationships_response).strip()
+
+                # Try to parse JSON relationships
+                try:
+                    relationships_data = json.loads(relationships_text)
+                    knowledge_relationships = relationships_data
+                    print(f"✅ Estratte {len(knowledge_relationships)} relazioni concettuali da {file_name}")
+                except (json.JSONDecodeError, KeyError):
+                    print(f"⚠️ Impossibile parsare relazioni JSON per {file_name}")
+                    knowledge_relationships = []
+
+            except Exception as e:
+                print(f"⚠️ Errore estrazione relazioni per {file_name}: {e}")
+                knowledge_relationships = []
+
+        # Generazione task AI
+        try:
+            tasks_prompt = PromptTemplate(prompt_manager.get_prompt("ACADEMIC_TASK_GENERATION_PROMPT"))
+            tasks_query = tasks_prompt.format(document_text=full_text[:3000])
+            tasks_response = Settings.llm.complete(tasks_query)
+            tasks_text = str(tasks_response).strip()
+            # Try to parse JSON
+            try:
+                tasks_data = json.loads(tasks_text)
+                academic_metadata['ai_tasks'] = tasks_data
+            except (json.JSONDecodeError, KeyError):
+                print(f"⚠️ Impossibile parsare task JSON per {file_name}")
+                academic_metadata['ai_tasks'] = {}
+        except Exception as e:
+            print(f"⚠️ Errore generazione task AI per {file_name}: {e}")
+            academic_metadata['ai_tasks'] = {}
+
+        # Salvare entità e relazioni nel grafo della conoscenza
+        # Nota: Dato che process_document_task non ha user_id, questo sarà gestito dal chiamante
+        # Per ora, le mettiamo in metadata e saranno salvate dal chiamante se loggato
+        academic_metadata['knowledge_entities'] = knowledge_entities
+        academic_metadata['knowledge_relationships'] = knowledge_relationships
+
         # 5. SALVATAGGIO SU DB E ARCHIVIAZIONE
         update_status("Salvataggio finale...", file_name)
         with db_connect() as conn:
             conn.cursor().execute("""
-                INSERT INTO papers (file_name, title, authors, publication_year, category_id, category_name, formatted_preview, processed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(file_name) DO UPDATE SET
+                INSERT INTO papers (file_name, title, authors, publication_year, category_id, category_name, formatted_preview, keywords, ai_tasks, processed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(file_name) DO UPDATE SET
                 title=excluded.title, authors=excluded.authors, publication_year=excluded.publication_year,
-                category_id=excluded.category_id, category_name=excluded.category_name, formatted_preview=excluded.formatted_preview;
-            """, (file_name, metadata.title, json.dumps(metadata.authors), metadata.publication_year, category_id, category_full_name, formatted_preview, datetime.now().isoformat()))
+                category_id=excluded.category_id, category_name=excluded.category_name, formatted_preview=excluded.formatted_preview,
+                keywords=excluded.keywords, ai_tasks=excluded.ai_tasks, processed_at=excluded.processed_at;
+            """, (file_name, metadata.title, json.dumps(metadata.authors), metadata.publication_year, category_id, category_full_name, formatted_preview, json.dumps(academic_metadata.get('keywords', [])), json.dumps(academic_metadata.get('ai_tasks', {})), datetime.now().isoformat()))
             conn.commit()
 
         destination_folder = os.path.join(CATEGORIZED_ARCHIVE_DIR, part_id, chapter_id)

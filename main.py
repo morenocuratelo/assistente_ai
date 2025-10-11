@@ -116,15 +116,41 @@ def render_navigation_sidebar():
         # Main Navigation - Chat First approach
         st.markdown("### 🧭 Navigazione")
 
-        # Chat button (primary - this is our main page)
-        if st.button(
-            "💬 Chat",
-            key="nav_chat",
-            use_container_width=True,
-            type="primary",
-            help="Chatta con i tuoi documenti (Pagina principale)"
-        ):
-            st.switch_page("pages/1_💬_Chat.py")
+        # Authentication-aware navigation
+        if 'user_id' in st.session_state and st.session_state['user_id']:
+            # User is logged in - show chat button
+            if st.button(
+                "💬 Chat",
+                key="nav_chat",
+                use_container_width=True,
+                type="primary",
+                help="Chatta con i tuoi documenti (Pagina principale)"
+            ):
+                st.switch_page("pages/1_💬_Chat.py")
+
+            # Logout button
+            if st.button(
+                f"🚪 Logout ({st.session_state.get('username', 'User')})",
+                key="nav_logout",
+                use_container_width=True,
+                type="secondary",
+                help="Disconnetti dal sistema"
+            ):
+                # Clear session state
+                for key in ['user_id', 'username', 'current_session_id']:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.rerun()
+        else:
+            # User not logged in - show login button
+            if st.button(
+                "🔐 Login",
+                key="nav_login",
+                use_container_width=True,
+                type="primary",
+                help="Accedi al sistema per iniziare a chattare"
+            ):
+                st.switch_page("pages/login.py")
 
         # Archive button
         if st.button(
@@ -156,6 +182,26 @@ def render_navigation_sidebar():
         ):
             st.switch_page("pages/4_✨_Nuovo.py")
 
+        # Carriera button (Academic section)
+        if st.button(
+            "🎓 Carriera",
+            key="nav_carriera",
+            use_container_width=True,
+            type="secondary",
+            help="Gestisci carriera accademica"
+        ):
+            st.switch_page("pages/5_🎓_Carriera.py")
+
+        # Grafo del Conoscenza button (Phase 3)
+        if st.button(
+            "🧠 Grafo",
+            key="nav_grafo",
+            use_container_width=True,
+            type="secondary",
+            help="Esplora il grafo della conoscenza"
+        ):
+            st.switch_page("pages/6_🧠_Grafo.py")
+
         st.divider()
 
         # Document Upload Section
@@ -167,6 +213,41 @@ def render_navigation_sidebar():
             label_visibility="collapsed"
         )
 
+        # Academic association (only for logged-in users)
+        academic_association = False
+        selected_course_id = None
+        selected_lecture_id = None
+        material_type = "other"
+
+        if 'user_id' in st.session_state and st.session_state['user_id']:
+            academic_association = st.checkbox("🎓 Associa a corso accademico", help="Collega i documenti caricati a un corso o lezione")
+
+            if academic_association:
+                from file_utils import get_user_courses, get_course_lectures
+
+                user_id = st.session_state['user_id']
+                courses = get_user_courses(user_id)
+                course_options = ["Seleziona..."] + [f"{c['course_name']} ({c['course_code'] or 'No Code'})" for c in courses]
+
+                selected_course_option = st.selectbox("Corso", course_options, help="Seleziona il corso associato")
+                if selected_course_option != "Seleziona...":
+                    course_name = selected_course_option.split(' (')[0]
+                    selected_course = next((c for c in courses if c['course_name'] == course_name), None)
+                    if selected_course:
+                        selected_course_id = selected_course['id']
+                        lectures = get_course_lectures(selected_course_id)
+                        lecture_options = ["Nessuna lezione specifica"] + [f"{l['lecture_title']} ({l['lecture_date'] or 'No Date'})" for l in lectures]
+
+                        selected_lecture_option = st.selectbox("Lezione (opzionale)", lecture_options)
+                        if selected_lecture_option != "Nessuna lezione specifica":
+                            lecture_title = selected_lecture_option.split(' (')[0]
+                            selected_lecture = next((l for l in lectures if l['lecture_title'] == lecture_title), None)
+                            if selected_lecture:
+                                selected_lecture_id = selected_lecture['id']
+
+                        material_type = st.selectbox("Tipo Materiale", ["lecture_notes", "handout", "assignment", "reading", "other"],
+                                                   format_func=lambda x: x.replace('_', ' ').title(), help="Tipo di materiale didattico")
+
         if uploaded_files:
             saved_files = []
             for uploaded_file in uploaded_files:
@@ -174,8 +255,27 @@ def render_navigation_sidebar():
                 with open(save_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
                 saved_files.append(uploaded_file.name)
+
             if saved_files:
                 add_log_message(f"Caricati {len(saved_files)} file.")
+
+                # Create material associations if academic data provided
+                if academic_association and selected_course_id:
+                    from file_utils import create_material
+                    user_id = st.session_state['user_id']
+
+                    for file_name in saved_files:
+                        try:
+                            material_id = create_material(
+                                lecture_id=selected_lecture_id,
+                                course_id=selected_course_id,
+                                file_name=file_name,
+                                material_type=material_type
+                            )
+                            add_log_message(f"Associato {file_name} al corso accademico.")
+                        except Exception as e:
+                            add_log_message(f"Errore associazione {file_name}: {e}")
+
                 scan_and_process_documents(files_to_process=saved_files)
                 st.rerun()
 
@@ -225,6 +325,8 @@ def main():
     - 🗂️ **Archivio**: Esplora e gestisci la tua biblioteca di documenti
     - 📝 **Editor**: Modifica anteprime generate dall'AI
     - ✨ **Nuovo**: Crea nuova conoscenza direttamente nell'applicazione
+    - 🎓 **Carriera**: Gestisci la carriera accademica con IA
+    - 🧠 **Grafo**: Esplora le connessioni concettuali dei tuoi documenti
 
     **Ogni pagina è ottimizzata per il suo compito specifico!**
     """)

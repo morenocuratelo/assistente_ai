@@ -1,4 +1,4 @@
-# 📚 Archivista AI v2.3.0 (Alpha 2.3)
+# 📚 Archivista AI v2.4.0 (Alpha 2.4) - **Phase 3: Intelligent Academic Ecosystem** 🎓🤖
 
 **Sistema Intelligente per l'Archiviazione e l'Interrogazione di Documenti con Architettura Multi-Pagina**
 
@@ -10,6 +10,9 @@ Archivista AI è un'applicazione web avanzata che utilizza l'intelligenza artifi
 - 🔍 **Ricerca Semantica**: Motore di ricerca intelligente con comprensione del contesto
 - 📝 **Editor Avanzato**: Modifica professionale delle anteprime con editor rich-text
 - 🗂️ **Archivio Intelligente**: Organizzazione automatica e categorizzazione dei documenti
+- 🎓 **Planner Accademico**: Gestione completa corsi, lezioni e attività didattiche
+- 🧠 **Grafo della Conoscenza**: Mappa interattiva delle connessioni concettuali
+- 🎮 **Sistema Gamificato**: XP, achievement e monitoraggio progresso accademico
 - 🤖 **Elaborazione AI**: Estrazione automatica di metadati, riassunti e anteprime
 - 🔄 **Elaborazione Asincrona**: Processamento in background con Celery e Redis
 - 🐳 **Containerizzazione**: Deployment semplificato con Docker
@@ -157,7 +160,9 @@ archivista-ai/
 │   ├── 1_💬_Chat.py          # Chat principale (conversazionale)
 │   ├── 2_🗂️_Archivio.py      # Esplorazione e gestione archivio
 │   ├── 3_📝_Editor.py         # Editor avanzato anteprime
-│   └── 4_✨_Nuovo.py          # Creazione nuovi documenti
+│   ├── 4_✨_Nuovo.py          # Creazione nuovi documenti
+│   ├── 5_🎓_Carriera.py       # Planner accademico con IA
+│   └── 6_🧠_Grafo.py          # Grafo delle connessioni concettuali
 └── 📁 db_memoria/            # Database e indici
     ├── metadata.sqlite       # Database metadati
     ├── index_store.json      # Store degli indici
@@ -366,49 +371,52 @@ docker-compose exec worker bash
 
 ## 🔄 Changelog
 
-### Versione 2.3.0 (Alpha 2.3) - Gennaio 2025
+### Versione 2.4.0 (Alpha 2.4) - Novembre 2025 - **Phase 3: Intelligent Academic Ecosystem** 🎓🤖
 
-**🆕 Architettura Multi-Pagina Completa:**
-- ✅ **4 Pagine Specializzate**: Chat, Archivio, Editor, Nuovo
-- ✅ **Navigazione Persistente**: Sidebar unificata tra tutte le pagine
-- ✅ **Streamlit Pages**: Utilizzo nativo del sistema multi-pagina
-- ✅ **Ottimizzazione UX**: Ogni pagina dedicata al suo scopo specifico
+**🎯 Rivoluzione dell'Apprendimento: Dal Document Organizer all'AI Study Companion**
 
-**💬 Chat Multi-Modale:**
-- ✅ **Interfaccia Conversazionale**: Chat principale ottimizzata
-- ✅ **Supporto Immagini**: Integrazione con modelli multimodali
-- ✅ **Ricerca Semantica**: Comprensione avanzata del contesto
-- ✅ **Chat History**: Persistenza conversazioni
+**🧠 Sistema Gamificato:**
+- ✅ **XP & Achievement System**: Guadagna punteggi per attività di apprendimento
+- ✅ **Gamification del Learning**: Achievement, badge e traguardi motivazionali
+- ✅ **Tracking Performance**: Progressi quanti e storici di apprendimento
+- ✅ **Studio Sessions**: Registrazione sessioni di studio con rating produttività
 
-**📝 Editor Avanzato:**
-- ✅ **Streamlit Quill**: Editor rich-text professionale
-- ✅ **Modifica Anteprime**: Modifica diretta anteprime AI
-- ✅ **Visualizzatore Documenti**: Vista affiancata originale/modificato
-- ✅ **Auto-salvataggio**: Backup automatico modifiche
+**🎓 Academic Planner Integrato:**
+- ✅ **6° Pagina Specializzata**: Carriera accademica completa
+- ✅ **Course Management**: Corsi universitari con lezioni e materiali associati
+- ✅ **Task Generation AI**: Creazione automatica di attività di apprendimento
+- ✅ **Study Planning**: Pianificazione intelligente degli obiettivi accademici
 
-**🗂️ Archivio Intelligente:**
-- ✅ **Esplorazione Avanzata**: Filtri multipli e ricerca
-- ✅ **Gestione Metadati**: Visualizzazione e modifica completa
-- ✅ **Organizzazione Categorie**: Sistema di categorizzazione automatico
-- ✅ **Ricerca Full-Text**: Motore di ricerca ottimizzato
+**🧠 Dynamic Knowledge Graph:**
+- ✅ **7° Pagina**: Grafo interattivo delle connessioni concettuali
+- ✅ **Entity Extraction**: entities concettuali, teorie, autori, formule
+- ✅ **Relationship Mapping**: Scoperta connessioni semantiche con confidence scores
+- ✅ **Interactive Navigation**: Esplorazione entità e loro vicinanza concettuale
 
-**✨ Nuovo Documento:**
-- ✅ **Creazione Assistita**: AI-powered document creation
-- ✅ **Template System**: Modelli per diversi tipi di contenuto
-- ✅ **Integrazione Database**: Salvataggio automatico
-- ✅ **Editor Integrato**: Composizione diretta nell'app
+**📊 Database Evoluto:**
+- ✅ **Nuove Tabelle**: concept_entities, concept_relationships, user_xp, achievements
+- ✅ **Graph Database Capabilities**: Funzionalità avanzate per mappare conoscenze
+- ✅ **Entity-Relationship Storage**: Memorizzazione relazioni fra concetti
 
-**🔧 Miglioramenti Tecnici:**
-- ✅ **Architettura Modulare**: Codice organizzato per funzionalità
-- ✅ **Performance Ottimizzate**: Caricamento lazy e caching
-- ✅ **Error Handling**: Gestione errori avanzata
-- ✅ **Type Safety**: Annotazioni tipo migliorate
+**🤖 Processing Pipeline Esteso:**
+- ✅ **Academic AI Prompts**: Analisi didattica specializzata per NLP
+- ✅ **Knowledge Discovery**: Algoritmi avanzati per trovare connessioni nascoste
+- ✅ **Multi-layer Analysis**: Keywords + Entities + Relationships profondi
 
-**🐛 Bug Fixes:**
-- ✅ **Risolto conflitto modulo statistics**: Rinominato `statistics.py` in `archive_statistics.py`
-- ✅ **Fix Import streamlit-quill**: Risoluzione warning Pylance
-- ✅ **Miglioramento Stabilità**: Fix crash e memory leak
-- ✅ **UI Responsiva**: Ottimizzazione interfaccia mobile
+**🔄 User Experience Evoluta:**
+- ✅ **Cross-page Navigation**: Collegamenti fra grafi e materiali accademici
+- ✅ **Unified Academic Dashboard**: Vista unificata del progresso didattico
+- ✅ **Smart Recommendations**: Suggerimenti basati sui pattern di apprendimento
+
+**🔧 Technical Enhancements:**
+- ✅ **NetworkX Integration**: Libreria per visualizzazione grafi complessa
+- ✅ **Optimized Graph Operations**: Performance elevate per big knowledge graphs
+- ✅ **Scalable Entity Storage**: Database ottimizzato per migliaia di entity
+
+**📚 Certification & Achievements:**
+- ✅ **Study Streaks**: Ricompense per apprendimento consistente
+- ✅ **Course Completion**: Badge per completamento corsi
+- ✅ **Knowledge Master**: Traguardi per profondità di comprensione
 
 ### Versione 2.2.0 (Alpha 2.2) - Dicembre 2024
 
