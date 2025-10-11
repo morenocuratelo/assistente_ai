@@ -18,6 +18,11 @@ from file_utils import (
 from file_utils import get_archive_tree  # Aggiunto per la navigazione dei documenti
 import knowledge_structure
 
+# Import UX components for improved user experience
+from ux_components import show_welcome_modal, show_guided_tour, show_contextual_help, get_smart_suggestions, init_ux_session
+# Import smart suggestions for behavior tracking
+from smart_suggestions import record_user_action
+
 # --- CONFIGURAZIONE CHAT ---
 CHAT_MODEL = get_chat_llm()
 
@@ -36,6 +41,15 @@ def main():
     user_id = st.session_state['user_id']
     username = st.session_state.get('username', 'Utente')
 
+    # Initialize UX components for this user
+    init_ux_session(user_id)
+
+    # Show welcome modal for new users
+    show_welcome_modal()
+
+    # Show guided tour if requested
+    show_guided_tour()
+
     # Inizializzazione sessione chat se necessario
     if 'current_session_id' not in st.session_state:
         st.session_state['current_session_id'] = None
@@ -47,6 +61,22 @@ def main():
     with col_title:
         st.title("💬 Chat con l'Archivio")
         st.caption(f" Benvenuto {username}! Fai domande sui tuoi documenti e ottieni risposte intelligenti.")
+
+        # Quick access to workflow wizards, feedback, and smart suggestions
+        col_wiz, col_feed, col_smart = st.columns(3)
+        with col_wiz:
+            if st.button("🎯 Wizards", help="Guide interattive", key="chat_wizards"):
+                record_user_action(user_id, 'accessed_workflow_wizards', {'from_page': 'chat'})
+                st.switch_page("pages/7_Workflow_Wizards.py")
+        with col_feed:
+            if st.button("📊 Feedback", help="Monitoraggio operazioni", key="chat_feedback"):
+                record_user_action(user_id, 'accessed_feedback_dashboard', {'from_page': 'chat'})
+                st.switch_page("pages/8_Feedback_Dashboard.py")
+        with col_smart:
+            if st.button("🤖 Smart", help="Suggerimenti AI", key="chat_smart"):
+                record_user_action(user_id, 'accessed_smart_suggestions', {'from_page': 'chat'})
+                st.switch_page("pages/9_Smart_Suggestions.py")
+
     with col_user:
         if st.button("🚪 Logout", help="Disconnetti dal sistema"):
             for key in ['user_id', 'username', 'current_session_id', 'chat_messages']:
@@ -161,17 +191,94 @@ def show_chat_interface(user_id):
                     st.markdown(f"**🤖 AI:** {msg['content']}")
                 st.markdown("---")
         else:
+            # Enhanced empty state with contextual help and smart suggestions
             st.markdown("*Nessun messaggio ancora. Inizia la conversazione!* 💬")
-            st.markdown("**Suggerimenti:**")
-            st.markdown("- Chiedi informazioni su documenti specifici")
-            st.markdown("- Richiedi riassunti di argomenti")
-            st.markdown("- Fai domande comparative tra documenti")
+
+            # Check if user has documents to determine context
+            try:
+                papers_df = get_papers_dataframe()
+                has_documents = not papers_df.empty
+            except:
+                has_documents = False
+
+            if not has_documents:
+                # Show contextual help for users without documents
+                show_contextual_help("empty_chat")
+
+                # Add smart suggestions for empty archive scenario
+                st.markdown("**🎯 Suggerimenti per iniziare:**")
+                suggestions = [
+                    "Prima carica qualche documento nella cartella 'documenti_da_processare/'",
+                    "Oppure crea il tuo primo documento usando la pagina 'Nuovo'",
+                    "Una volta che hai documenti, potrai farmi domande su di essi!"
+                ]
+
+                for suggestion in suggestions:
+                    st.markdown(f"• {suggestion}")
+
+                # Quick action buttons
+                st.markdown("**🚀 Azioni rapide:**")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("📤 Vai a 'Nuovo Documento'", use_container_width=True):
+                        st.switch_page("pages/4_Nuovo.py")
+                with col2:
+                    if st.button("📚 Esplora Archivio", use_container_width=True):
+                        st.switch_page("pages/2_Archivio.py")
+
+            else:
+                # User has documents - show relevant suggestions
+                st.markdown("**💡 Suggerimenti per iniziare:**")
+                suggestions = [
+                    "Chiedi informazioni su documenti specifici",
+                    "Richiedi riassunti di argomenti",
+                    "Fai domande comparative tra documenti",
+                    "Esplora relazioni tra documenti diversi"
+                ]
+
+                for suggestion in suggestions:
+                    st.markdown(f"• {suggestion}")
+
+                # Show sample questions based on available documents
+                if not papers_df.empty:
+                    st.markdown("**🎯 Domande di esempio sui tuoi documenti:**")
+
+                    # Get sample documents for contextual suggestions
+                    sample_docs = papers_df.head(3)
+
+                    cols = st.columns(min(len(sample_docs), 3))
+                    for i, (_, doc) in enumerate(sample_docs.iterrows()):
+                        with cols[i]:
+                            doc_title = doc.get('title', doc['file_name'])
+                            if st.button(f"📄 {doc_title[:30]}...", use_container_width=True):
+                                # Pre-fill chat input with sample question
+                                st.session_state.sample_question = f"Dimmi qualcosa su '{doc_title}'"
+
+                    # Show general sample questions
+                    st.markdown("**🔍 Altre domande di esempio:**")
+                    sample_questions = [
+                        "Quali sono i temi principali nei miei documenti?",
+                        "Mostrami i documenti più recenti",
+                        "Confronta i documenti della stessa categoria"
+                    ]
+
+                    for question in sample_questions:
+                        if st.button(question, use_container_width=True):
+                            st.session_state.sample_question = question
 
     # Input utente
     if current_session_id or st.session_state.get('current_session_id') is None:
         st.markdown("#### 💬 Nuovo Messaggio")
+
+        # Pre-fill with sample question if selected
+        sample_question = st.session_state.get('sample_question', '')
+        if sample_question:
+            # Clear the sample question after using it
+            del st.session_state.sample_question
+
         user_input = st.text_area(
             "Scrivi la tua domanda:",
+            value=sample_question,
             height=80,
             placeholder="Fai una domanda sui tuoi documenti...",
             label_visibility="collapsed"

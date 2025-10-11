@@ -22,10 +22,32 @@ import pandas as pd
 from file_utils import get_archive_tree, get_papers_dataframe
 import os
 
+# Import UX components for improved user experience
+from ux_components import show_contextual_help, create_labeled_icon, show_success_message, show_error_message
+
 def main():
     st.set_page_config(page_title="🗂️ Archivio - Archivista AI", page_icon="🗂️", layout="wide")
     st.title("🗂️ Knowledge Explorer")
     st.caption("Esplora, analizza e gestisci la tua biblioteca di documenti")
+
+    # Navigation buttons in header
+    col_nav1, col_nav2 = st.columns([0.8, 0.2])
+    with col_nav2:
+        col_help, col_wizards = st.columns(2)
+        with col_help:
+            if st.button("❓ Guida", help="Mostra guida per usare l'archivio"):
+                show_contextual_help("archive_overview")
+        with col_wizards:
+            if st.button("🎯 Wizards", help="Guide interattive per processi complessi"):
+                st.switch_page("pages/7_Workflow_Wizards.py")
+
+    # Check if archive is empty and show contextual help
+    try:
+        papers_df = get_papers_dataframe()
+        if papers_df.empty:
+            show_contextual_help("empty_archive")
+    except:
+        pass
 
     # Layout principale a 3 colonne
     col_left, col_center, col_right = st.columns([0.15, 0.55, 0.30])

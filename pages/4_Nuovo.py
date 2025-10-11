@@ -18,6 +18,13 @@ import os
 import time
 from datetime import datetime
 
+# Import UX components for improved user experience
+from ux_components import show_contextual_help, show_success_message, show_error_message
+# Import feedback system for enhanced messaging
+from feedback_system import show_enhanced_message, show_success_with_actions, handle_operation_error, notification_manager
+# Import smart suggestions for behavior tracking
+from smart_suggestions import record_user_action, doc_type_detector
+
 # --- CONFIGURAZIONE ---
 DOCS_TO_PROCESS_DIR = "documenti_da_processare"
 
@@ -25,6 +32,10 @@ def main():
     st.set_page_config(page_title="✨ Nuovo Documento - Archivista AI", page_icon="✨", layout="wide")
     st.title("✨ Crea Nuovo Documento")
     st.caption("Crea nuova conoscenza direttamente nell'applicazione")
+
+    # Add help button for document creation
+    if st.button("❓ Guida Creazione", help="Mostra guida per creare documenti"):
+        show_contextual_help("document_creation")
 
     # Layout 2 colonne per creazione documento
     col_left, col_right = st.columns([0.6, 0.4])
@@ -39,14 +50,46 @@ def render_creation_form():
     """Form principale per creazione documento"""
     st.markdown("### 📝 Crea Nuovo Documento")
 
-    # Template selezione
+    # Enhanced template selection with descriptions
     st.markdown("#### 🎯 Scegli Template")
-    template = st.selectbox(
+
+    # Template options with detailed descriptions
+    template_options = {
+        "Documento vuoto": {
+            "description": "📄 Documento generico per appunti veloci e contenuti vari",
+            "use_case": "Ideale per: note rapide, bozze, contenuti generici"
+        },
+        "Appunti riunione": {
+            "description": "🗣️ Struttura per verbali e discussioni di gruppo",
+            "use_case": "Ideale per: riunioni, meeting, discussioni collaborative"
+        },
+        "Riassunto libro": {
+            "description": "📖 Template per recensioni e sintesi di letture",
+            "use_case": "Ideale per: recensioni libri, sintesi letture, analisi testi"
+        },
+        "Idea progetto": {
+            "description": "💡 Struttura per pianificare nuovi progetti",
+            "use_case": "Ideale per: pianificazione, proposte, sviluppo idee"
+        },
+        "Nota ricerca": {
+            "description": "🔬 Template per appunti di ricerca e metodologia",
+            "use_case": "Ideale per: ricerca accademica, studi, indagini"
+        }
+    }
+
+    # Create radio buttons for better template selection
+    template = st.radio(
         "Tipo di documento:",
-        options=["Documento vuoto", "Appunti riunione", "Riassunto libro", "Idea progetto", "Nota ricerca"],
+        options=list(template_options.keys()),
         key="document_template",
-        help="Scegli un template per iniziare più velocemente"
+        help="Scegli il template più adatto al tuo contenuto"
     )
+
+    # Show template description and use case
+    if template in template_options:
+        template_info = template_options[template]
+        st.info(f"**{template_info['description']}**")
+        st.caption(f"💡 {template_info['use_case']}")
 
     # Metadati documento
     st.markdown("#### 📋 Metadati")
@@ -137,8 +180,17 @@ def render_creation_form():
             help="Salva il documento e avviane il processamento automatico"
         ):
             if save_new_document(document_title, document_authors, document_year, document_category, document_content):
-                st.success("✅ Documento creato e inviato per processamento!")
-                st.info("🔄 Il documento apparirà nell'archivio una volta completato il processamento automatico.")
+                # Enhanced success feedback with actions
+                show_success_with_actions(
+                    "Documento Creato!",
+                    f"Il documento '{document_title}' è stato creato e inviato per processamento automatico.",
+                    actions=[
+                        {"label": "📚 Vedi Archivio", "page": "pages/2_Archivio.py"},
+                        {"label": "💬 Vai alla Chat", "page": "pages/1_Chat.py"},
+                        {"label": "📊 Monitoraggio", "page": "pages/8_Feedback_Dashboard.py"}
+                    ],
+                    notification=True
+                )
             else:
                 st.error("❌ Errore nella creazione del documento")
 
@@ -183,7 +235,7 @@ def render_creation_form():
 
 def render_creation_sidebar():
     """Sidebar con informazioni e suggerimenti per creazione documento"""
-    st.markdown("### 💡 Suggerimenti")
+    st.markdown("### 💡 Suggerimenti per Iniziare")
 
     # Statistiche documenti esistenti
     try:
@@ -199,43 +251,83 @@ def render_creation_sidebar():
                 st.markdown("**🏆 Categorie popolari:**")
                 for cat, count in top_categories.items():
                     st.markdown(f"• {cat} ({count} documenti)")
+
+            # Quick actions for existing users
+            st.markdown("**🚀 Azioni rapide:**")
+            if st.button("💬 Vai alla Chat", use_container_width=True):
+                st.switch_page("pages/1_Chat.py")
+            if st.button("📚 Esplora Archivio", use_container_width=True):
+                st.switch_page("pages/2_Archivio.py")
         else:
-            st.info("📭 Nessun documento esistente")
+            st.info("📭 Questo sarà il tuo primo documento!")
+            st.markdown("**🎉 Dopo averlo creato potrai:**")
+            st.markdown("• 💬 Farci domande nella Chat")
+            st.markdown("• 📚 Vederlo nell'Archivio")
+            st.markdown("• ✏️ Modificare l'anteprima nell'Editor")
 
     except Exception as e:
         st.warning(f"⚠️ Impossibile caricare statistiche: {e}")
 
     st.markdown("---")
 
-    # Guida creazione
-    st.markdown("### 📖 Guida Rapida")
-    st.markdown("""
-    **🎯 Tips per documenti ottimali:**
+    # Enhanced guidance for document creation
+    st.markdown("### 📖 Come Procedere")
 
-    • **Titolo chiaro** e descrittivo
-    • **Contenuto strutturato** con sezioni
-    • **Metadati accurati** per categorizzazione
-    • **Markdown semplice** per formattazione
+    # Step by step guide
+    st.markdown("**🎯 Passi per creare un documento perfetto:**")
 
-    **📂 Categorizzazione automatica:**
-    • I documenti vengono automaticamente processati
-    • L'AI categorizza il contenuto
-    • Integrati nell'archivio esistente
+    steps = [
+        {
+            "step": "1. 📋 Scegli Template",
+            "description": "Seleziona il tipo di documento più adatto al tuo contenuto"
+        },
+        {
+            "step": "2. ✏️ Inserisci Metadati",
+            "description": "Aggiungi titolo, autori e categoria per una migliore organizzazione"
+        },
+        {
+            "step": "3. 📝 Scrivi Contenuto",
+            "description": "Usa l'editor per creare il tuo documento con formattazione Markdown"
+        },
+        {
+            "step": "4. 💾 Salva e Processa",
+            "description": "Il documento verrà automaticamente processato e aggiunto all'archivio"
+        }
+    ]
+
+    for step_info in steps:
+        with st.expander(step_info["step"]):
+            st.caption(step_info["description"])
+
+    st.markdown("---")
+
+    # Tips and best practices
+    st.markdown("### 💡 Best Practices")
+
+    tips = [
+        "**Titolo efficace:** Usa titoli chiari e descrittivi che spieghino il contenuto",
+        "**Contenuto strutturato:** Organizza con sezioni (## Titolo) per una migliore leggibilità",
+        "**Parole chiave:** Includi termini importanti per facilitare future ricerche",
+        "**Metadati accurati:** Categoria e anno aiutano l'organizzazione automatica"
+    ]
+
+    for tip in tips:
+        st.markdown(f"• {tip}")
+
+    # Workflow explanation
+    st.markdown("---")
+    st.markdown("### 🔄 Cosa Succede Dopo?")
+    st.info("""
+    **🤖 Processamento Automatico:**
+    1. L'AI analizza il contenuto del documento
+    2. Crea un'anteprima intelligente
+    3. Indicizza per la ricerca
+    4. Aggiunge all'archivio categorizzato
+
+    **⏱️ Tempistiche:**
+    • Documenti brevi: pochi secondi
+    • Documenti lunghi: fino a 1 minuto
     """)
-
-    # Template disponibili
-    st.markdown("### 🎨 Template Disponibili")
-    templates = {
-        "Documento vuoto": "Documento generico senza struttura predefinita",
-        "Appunti riunione": "Struttura per appunti di riunioni con agenda e decisioni",
-        "Riassunto libro": "Template per riassunti di libri con autore e temi principali",
-        "Idea progetto": "Struttura per idee di progetto con obiettivi e requisiti",
-        "Nota ricerca": "Template per note di ricerca con metodologia e risultati"
-    }
-
-    for template_name, description in templates.items():
-        with st.expander(f"📋 {template_name}"):
-            st.caption(description)
 
 def get_template_title(template):
     """Restituisce titolo predefinito per template"""
