@@ -10,9 +10,14 @@ from config import initialize_services, get_chat_llm
 from file_utils import (
     setup_database, get_papers_dataframe, update_paper_metadata,
     get_today_planned_sessions, generate_study_schedule, get_study_insights,
-    get_user_tasks, get_user_courses, get_course_lectures, implement_generated_schedule
+    get_user_tasks, get_user_courses, get_course_lectures, implement_generated_schedule,
+    record_user_activity, get_dashboard_data, check_first_time_user, mark_user_not_new
 )
 import knowledge_structure
+
+# Import UX components for enhanced experience
+from ux_components import show_welcome_modal, show_guided_tour, show_contextual_help
+from smart_suggestions import record_user_action
 
 # --- CONFIGURAZIONE ---
 DB_STORAGE_DIR = "db_memoria"
@@ -366,7 +371,7 @@ def get_top_urgent_tasks(user_id, limit=5):
         return []
 
 def main():
-    """Main entry point - now serves as the intelligent dashboard."""
+    """Main entry point - Intelligent Dashboard with 2-3 column layout."""
 
     # Esecuzione allo startup
     auto_scan_at_startup()
@@ -383,150 +388,194 @@ def main():
     user_id = st.session_state['user_id']
     username = st.session_state.get('username', 'Utente')
 
-    # Header principale
-    st.title("🎓 Il Tuo Centro di Comando Accademico")
-    st.markdown(f"**Benvenuto, {username}!** Questa è la tua dashboard intelligente per il percorso di studio.")
+    # Initialize UX components for this user
+    from ux_components import init_ux_session
+    init_ux_session(user_id)
+
+    # Record dashboard access for behavior tracking
+    record_user_activity(user_id, 'accessed_dashboard', 'dashboard', 'main')
+
+    # Check if first-time user and show onboarding
+    is_first_time = check_first_time_user(user_id)
+    if is_first_time:
+        show_new_user_dashboard(user_id, username)
+        return
+
+    # Header principale con navigazione rapida
+    st.title("🎓 Dashboard Intelligente")
+    st.caption(f"**Benvenuto, {username}!** Centro di comando personalizzato per il tuo apprendimento.")
+
+    # Quick navigation header
+    col_nav1, col_nav2, col_nav3, col_nav4 = st.columns(4)
+    with col_nav1:
+        if st.button("🎯 Wizards", help="Guide interattive", key="header_wizards"):
+            record_user_activity(user_id, 'accessed_workflow_wizards', 'navigation', 'header')
+            st.switch_page("pages/7_Workflow_Wizards.py")
+    with col_nav2:
+        if st.button("📊 Feedback", help="Monitoraggio operazioni", key="header_feedback"):
+            record_user_activity(user_id, 'accessed_feedback_dashboard', 'navigation', 'header')
+            st.switch_page("pages/8_Feedback_Dashboard.py")
+    with col_nav3:
+        if st.button("🤖 Smart AI", help="Suggerimenti personalizzati", key="header_smart"):
+            record_user_activity(user_id, 'accessed_smart_suggestions', 'navigation', 'header')
+            st.switch_page("pages/9_Smart_Suggestions.py")
+    with col_nav4:
+        if st.button("❓ Guida", help="Aiuto e supporto", key="header_help"):
+            from ux_components import show_contextual_help
+            show_contextual_help("dashboard_overview")
 
     st.divider()
 
-    # "Oggi nel campus" section
-    st.subheader("🏫 Oggi nel campus")
-    with st.container():
-        today_summary = get_today_summary(user_id)
-        st.info(today_summary)
+    # Layout principale a 2 colonne
+    col_left, col_right = st.columns([0.65, 0.35])
 
-    # To-Do List principali
-    st.subheader("🎯 Attività Principali")
-    urgent_tasks = get_top_urgent_tasks(user_id)
+    # --- COLONNA SINISTRA: Interazione Principale ---
+    with col_left:
+        # Widget Comando Universale / Chat
+        st.markdown("### 💬 Comando Universale")
+        st.caption("Fai domande, dai comandi, o inizia una conversazione con i tuoi documenti")
 
-    if urgent_tasks:
-        cols = st.columns(min(len(urgent_tasks), 3))
-        for i, task in enumerate(urgent_tasks):
-            with cols[i % len(cols)]:
-                priority_icon = {'high': '🔴', 'medium': '🟡', 'low': '🟢'}
-                status_icon = {'pending': '⏳', 'in_progress': '🔄'}
+        # Universal command input
+        universal_command = st.text_input(
+            "🎯 Cosa vuoi fare oggi?",
+            placeholder="Es: 'Riassumi i documenti di matematica' o 'Pianifica il mio studio'",
+            key="universal_command",
+            help="Comando naturale in italiano - l'AI capirà cosa intendi!"
+        )
 
-                st.markdown(f"""
-                <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; margin-bottom: 8px; background-color: #fafafa;">
-                    <h5>{status_icon.get(task['status'], '⏳')} {task['task_title'][:30]}{'...' if len(task['task_title']) > 30 else ''}</h5>
-                    <p style="font-size: 0.9em; color: #666;">{priority_icon.get(task.get('priority', 'medium'), '🟡')} Priorità {task.get('priority', 'medium').title()}</p>
-                    {f'<p style="font-size: 0.8em;">📅 Scadenza: {task.get("due_date", "N/A")[:10]}</p>' if task.get('due_date') else ''}
-                </div>
-                """, unsafe_allow_html=True)
-    else:
-        st.info("🎉 Tutte le attività completate! Continua così!")
+        if universal_command.strip():
+            # Process universal command
+            process_universal_command(user_id, universal_command.strip())
 
-    # Studio Pianificato per Oggi (Assistente Calendarizzatore IA)
-    st.subheader("📅 Studio Pianificato per Oggi")
-    today_sessions = get_today_planned_sessions(user_id)
+        st.markdown("---")
 
-    if today_sessions:
-        st.success(f"🎯 **{len(today_sessions)} sessioni pianificate** per oggi dall'IA!")
+        # Azioni Rapide
+        st.markdown("### ⚡ Azioni Rapide")
 
-        for i, session in enumerate(today_sessions):
-            col_a, col_b = st.columns([3, 1])
-            with col_a:
-                duration = session.get('planned_duration', 60)
-                priority = session.get('priority_score', 0.5)
-                priority_icon = '🔴' if priority > 0.7 else '🟡' if priority > 0.4 else '🟢'
+        action_col1, action_col2 = st.columns(2)
 
-                topics = session.get('topics_covered', [])
-                topic_text = topics[0] if topics else "Studio generale"
+        with action_col1:
+            if st.button("📤 Carica Documento", use_container_width=True, type="primary"):
+                record_user_activity(user_id, 'quick_upload_document', 'action', 'dashboard')
+                st.session_state['show_quick_upload'] = True
+                st.rerun()
 
-                st.markdown(f"""
-                <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; margin-bottom: 8px; background-color: #f8f9fa;">
-                    <h5>{priority_icon} {topic_text[:40]}{'...' if len(topic_text) > 40 else ''}</h5>
-                    <p style="font-size: 0.9em; color: #666;">⏱️ {duration} minuti | Priorità: {priority:.1f}/1.0</p>
-                    {f'<p style="font-size: 0.8em; font-style: italic;">💡 {session.get("ai_recommendation", "")[:100]}</p>' if session.get("ai_recommendation") else ''}
-                </div>
-                """, unsafe_allow_html=True)
+            if st.button("🎯 Workflow Wizard", use_container_width=True):
+                record_user_activity(user_id, 'quick_workflow_wizard', 'action', 'dashboard')
+                st.switch_page("pages/7_Workflow_Wizards.py")
 
-                # Mostra task collegati se esistono
-                if session.get('course_name'):
-                    st.caption(f"📚 Corso: {session['course_name']}")
+        with action_col2:
+            if st.button("📚 Esplora Archivio", use_container_width=True):
+                record_user_activity(user_id, 'quick_explore_archive', 'action', 'dashboard')
+                st.switch_page("pages/2_Archivio.py")
 
-            with col_b:
-                if st.button(f"▶️ Inizia", key=f"start_session_{session['id']}", use_container_width=True):
-                    st.info("Avvio sessione di studio...")
-                    # Qui si potrebbe avviare un timer o collegare a funzionalità di tracking
-                if st.button("✏️", key=f"edit_session_{session['id']}", help="Modifica"):
-                    st.info("Modifica sessione da implementare")
+            if st.button("🤖 Suggerimenti AI", use_container_width=True):
+                record_user_activity(user_id, 'quick_smart_suggestions', 'action', 'dashboard')
+                st.switch_page("pages/9_Smart_Suggestions.py")
 
-        # Insight sul pattern di studio
-        st.divider()
-        insights = get_study_insights(user_id)
-        if 'insight' in insights:
-            st.info(f"📊 **Il tuo profilo di studio:** {insights['insight']}")
+        # Show quick upload form if triggered
+        if st.session_state.get('show_quick_upload'):
+            st.markdown("---")
+            show_quick_upload_form(user_id)
 
-    else:
-        # Genera automaticamente un piano se non esistono sessioni pianificate
-        if st.button("🤖 Genera Piano di Studio IA", key="generate_schedule", help="L'IA analizzerà i tuoi impegni e creerà un calendario personalizzato"):
-            with st.spinner("🔍 Analizzo i tuoi dati e genero un piano di studio intelligente..."):
-                try:
-                    schedule = generate_study_schedule(user_id, days_ahead=7)
-                    sessions_created = implement_generated_schedule(user_id, schedule)
+    # --- COLONNA DESTRA: Informazioni e Accessi Rapidi ---
+    with col_right:
+        # Documenti Recenti
+        st.markdown("### 📄 Documenti Recenti")
 
-                    if sessions_created > 0:
-                        st.success(f"✅ Creato piano di studio con {sessions_created} sessioni! Ricarica per vedere i suggerimenti.")
-                        st.rerun()
-                    else:
-                        st.info("📝 Nessuna sessione urgente da pianificare ora. Aggiungi più contenuti per suggerimenti migliori!")
+        try:
+            recent_docs = get_recent_documents(user_id, limit=3)
+            if recent_docs:
+                for doc in recent_docs:
+                    doc_title = doc.get('title', doc['file_name'])
+                    last_accessed = doc.get('last_accessed', 'N/A')[:10] if doc.get('last_accessed') else 'N/A'
 
-                except Exception as e:
-                    st.error(f"Errore generazione piano: {str(e)}")
-                    st.info("💡 Assicurati di avere corsi e lezioni caricate per suggerimenti personalizzati.")
+                    with st.expander(f"📄 {doc_title[:30]}..."):
+                        st.caption(f"📅 Ultimo accesso: {last_accessed}")
+                        st.caption(f"📂 Categoria: {doc.get('category_name', 'N/A')}")
 
-    # Accesso Rapido
-    st.subheader("⚡ Accesso Rapido")
-    col1, col2, col3, col4 = st.columns(4)
+                        col_view, col_edit = st.columns(2)
+                        with col_view:
+                            if st.button("👁️ Visualizza", key=f"view_recent_{doc['file_name']}", use_container_width=True):
+                                record_user_activity(user_id, 'view_recent_document', 'document', doc['file_name'])
+                                st.switch_page("pages/2_Archivio.py")
+                        with col_edit:
+                            if st.button("✏️ Modifica", key=f"edit_recent_{doc['file_name']}", use_container_width=True):
+                                record_user_activity(user_id, 'edit_recent_document', 'document', doc['file_name'])
+                                st.session_state['edit_paper'] = doc['file_name']
+                                st.switch_page("pages/3_Editor.py")
+            else:
+                st.info("📭 Nessun documento recente")
+                if st.button("📤 Carica Primo Documento", use_container_width=True):
+                    st.session_state['show_quick_upload'] = True
+                    st.rerun()
 
-    with col1:
-        if st.button("📹 Registra Lezione", key="quick_record_lecture", use_container_width=True):
-            st.switch_page("pages/5_🎓_Carriera.py")
+        except Exception as e:
+            st.error(f"Errore nel caricamento documenti recenti: {e}")
 
-    with col2:
-        if st.button("📚 Corsi & Lezioni", key="quick_courses", use_container_width=True):
-            st.switch_page("pages/5_🎓_Carriera.py")
+        st.markdown("---")
 
-    with col3:
-        if st.button("📤 Carica Documento", key="quick_upload", use_container_width=True):
-            # Enable upload section
-            st.session_state['show_upload'] = True
-            st.rerun()
+        # File Recenti (Upload)
+        st.markdown("### 📁 File Caricati di Recente")
 
-    with col4:
-        if st.button("💬 Chat Rapida", key="quick_chat", use_container_width=True):
-            st.switch_page("pages/1_💬_Chat.py")
+        try:
+            recent_uploads = get_recent_uploads(user_id, limit=3)
+            if recent_uploads:
+                for upload in recent_uploads:
+                    upload_date = upload.get('upload_date', 'N/A')[:10] if upload.get('upload_date') else 'N/A'
 
-    # Upload section (usually hidden, shown when quick upload clicked)
-    if st.session_state.get('show_upload'):
-        st.divider()
-        st.subheader("📤 Carica Nuovo Documento")
-        # We'll use the existing upload logic from sidebar, but show it prominently here
-        show_academic_upload_form(user_id)
+                    with st.expander(f"📄 {upload['file_name'][:30]}..."):
+                        st.caption(f"📅 Caricato: {upload_date}")
+                        st.caption(f"📊 Dimensione: {upload['size'] // 1024} KB")
 
-    # Metriche rapide del sistema
-    st.divider()
-    st.subheader("📊 Il Tuo Apprendimento")
+                        if st.button("🔍 Processa", key=f"process_recent_{upload['file_name']}", use_container_width=True):
+                            record_user_activity(user_id, 'reprocess_recent_upload', 'document', upload['file_name'])
+                            scan_and_process_documents([upload['file_name']])
+            else:
+                st.info("📭 Nessun upload recente")
 
-    papers_df = get_papers_dataframe()
-    courses = get_user_courses(user_id)
-    tasks = get_user_tasks(user_id)
+        except Exception as e:
+            st.error(f"Errore nel caricamento upload recenti: {e}")
 
-    col1, col2, col3, col4 = st.columns(4)
+        st.markdown("---")
 
-    with col1:
-        st.metric("📚 Documenti", len(papers_df))
-    with col2:
-        st.metric("🎓 Corsi", len(courses))
-    with col3:
-        completed = len([t for t in tasks if t['status'] == 'completed'])
-        total_tasks = len(tasks)
-        st.metric("✅ Task Completati", f"{completed}/{total_tasks}")
-    with col4:
-        # Estimated study hours (basic calculation)
-        study_hours = sum([t.get('duration_minutes', 0) for t in tasks]) / 60
-        st.metric("🕒 Ore Studio", f"{study_hours:.1f}")
+        # Statistiche Rapide
+        st.markdown("### 📊 Statistiche Rapide")
+
+        try:
+            papers_df = get_papers_dataframe()
+            courses = get_user_courses(user_id)
+            tasks = get_user_tasks(user_id)
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.metric("📚 Documenti", len(papers_df))
+                st.metric("🎓 Corsi Attivi", len(courses))
+
+            with col2:
+                completed_tasks = len([t for t in tasks if t['status'] == 'completed'])
+                st.metric("✅ Task Completati", f"{completed_tasks}/{len(tasks)}")
+                st.metric("🤖 AI Processed", len(papers_df[papers_df['formatted_preview'].notna()]))
+
+        except Exception as e:
+            st.error(f"Errore nel caricamento statistiche: {e}")
+
+        # Quick insights
+        st.markdown("---")
+        st.markdown("### 💡 Insight del Giorno")
+
+        try:
+            # Get activity summary for insights
+            activity_summary = get_user_activity_summary(user_id, days=1)
+
+            if activity_summary['general_stats'].get('total_actions', 0) > 0:
+                st.info(f"🔥 **Attivo oggi!** {activity_summary['general_stats']['total_actions']} azioni registrate.")
+            else:
+                st.info("💪 **Pronto per iniziare!** La tua dashboard ti aspetta.")
+
+        except Exception as e:
+            st.info("🌟 **Benvenuto!** Inizia caricando documenti o creando contenuti.")
 
 def show_welcome_dashboard():
     """Dashboard di benvenuto per utenti non autenticati"""
@@ -673,6 +722,216 @@ def show_academic_upload_form(user_id):
                 st.rerun()
         elif submit_button:
             st.error("Seleziona almeno un file da caricare")
+
+def show_new_user_dashboard(user_id: str, username: str):
+    """Dashboard speciale per nuovi utenti con onboarding guidato."""
+    st.title("🎉 Benvenuto in Archivista AI!")
+    st.markdown(f"**Ciao {username}!** Iniziamo il tuo viaggio di apprendimento intelligente.")
+
+    # Welcome message with balloons effect
+    st.balloons()
+
+    st.info("""
+    🎓 **Archivista AI** è il tuo assistente personale per l'apprendimento universitario.
+
+    **In questa dashboard intelligente puoi:**
+    - 📤 **Caricare documenti** e farli elaborare dall'AI
+    - 💬 **Chattare** con i tuoi documenti per chiarire dubbi
+    - 📚 **Esplorare l'archivio** organizzato per categorie
+    - 🎯 **Usare workflow guidati** per operazioni complesse
+    - 🤖 **Ricevere suggerimenti** personalizzati basati sul tuo utilizzo
+    """)
+
+    st.markdown("---")
+
+    # First action guidance
+    st.markdown("### 🚀 Il Tuo Primo Passo")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("#### 📤 Carica il Tuo Primo Documento")
+        st.info("Inizia caricando appunti, dispense o qualsiasi documento di studio.")
+
+        if st.button("📤 Carica Documento", key="first_upload", type="primary", use_container_width=True):
+            record_user_activity(user_id, 'first_document_upload_attempt', 'action', 'onboarding')
+            st.session_state['show_first_upload'] = True
+            st.rerun()
+
+    with col2:
+        st.markdown("#### ✨ Crea Contenuto Originale")
+        st.info("Oppure crea il tuo primo documento direttamente nell'app.")
+
+        if st.button("✨ Crea Documento", key="first_create", use_container_width=True):
+            record_user_activity(user_id, 'first_document_creation_attempt', 'action', 'onboarding')
+            st.switch_page("pages/4_Nuovo.py")
+
+    # Show first upload form if triggered
+    if st.session_state.get('show_first_upload'):
+        st.markdown("---")
+        show_first_time_upload_form(user_id)
+
+    # Quick tips for new users
+    st.markdown("---")
+    st.markdown("### 💡 Suggerimenti per Iniziare Bene")
+
+    tips = [
+        "**📚 Inizia con pochi documenti** per vedere come funziona il sistema",
+        "**🎯 Usa titoli descrittivi** per aiutare l'AI a categorizzare correttamente",
+        "**📂 Organizza per categorie** per trovare facilmente i tuoi documenti",
+        "**💬 Fai domande specifiche** quando chatti con i tuoi documenti"
+    ]
+
+    for tip in tips:
+        st.markdown(f"• {tip}")
+
+    # Complete onboarding button
+    st.markdown("---")
+    if st.button("✅ Ho Capito, Iniziamo!", key="complete_onboarding", type="primary", use_container_width=True):
+        mark_user_not_new(user_id)
+        record_user_activity(user_id, 'completed_new_user_onboarding', 'milestone', 'onboarding')
+        st.success("🎉 Onboarding completato! Benvenuto nella community di Archivista AI!")
+        st.rerun()
+
+def show_first_time_upload_form(user_id: str):
+    """Form di upload semplificato per nuovi utenti."""
+    with st.form("first_time_upload"):
+        st.markdown("**🎯 Carica il tuo primo documento**")
+
+        first_file = st.file_uploader(
+            "Seleziona un documento (PDF, Word, TXT, etc.)",
+            type=['pdf', 'docx', 'txt', 'rtf', 'html', 'htm'],
+            help="Inizia con un documento di studio, appunti o dispense"
+        )
+
+        if first_file:
+            st.success(f"📎 File selezionato: {first_file.name}")
+
+            # Simple category selection for new users
+            simple_category = st.selectbox(
+                "📂 Categoria (opzionale)",
+                ["Nessuna categoria", "P1_IL_PALCOSCENICO_COSMICO_E_BIOLOGICO/C01", "P2_L_ASCESA_DEL_GENERE_HOMO/C04", "UNCATEGORIZED/C00"],
+                help="Scegli una categoria per organizzare il documento"
+            )
+
+        submit_first = st.form_submit_button("🚀 Carica e Inizia l'Esplorazione!", type="primary", use_container_width=True)
+
+        if submit_first and first_file:
+            # Save file
+            save_path = os.path.join(DOCS_TO_PROCESS_DIR, first_file.name)
+            with open(save_path, "wb") as f:
+                f.write(first_file.getbuffer())
+
+            # Mark user as not new
+            mark_user_not_new(user_id)
+
+            # Record first upload
+            record_user_activity(user_id, 'first_document_uploaded', 'document', first_file.name, {
+                'category': simple_category,
+                'size': len(first_file.getbuffer()),
+                'is_first_upload': True
+            })
+
+            # Start processing
+            scan_and_process_documents([first_file.name])
+
+            st.success("🎉 Primo documento caricato con successo!")
+            st.info("🔄 L'AI sta elaborando il documento. Tra poco apparirà nell'archivio!")
+
+            # Show next steps
+            st.markdown("**🎯 Prossimi passi consigliati:**")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("💬 Prova la Chat", key="first_chat"):
+                    st.switch_page("pages/1_Chat.py")
+            with col2:
+                if st.button("📚 Esplora Archivio", key="first_archive"):
+                    st.switch_page("pages/2_Archivio.py")
+
+            st.rerun()
+
+def process_universal_command(user_id: str, command: str):
+    """Processa il comando universale dell'utente."""
+    try:
+        # Record the command attempt
+        record_user_activity(user_id, 'universal_command_used', 'command', 'dashboard', {
+            'command_text': command[:100]  # Limit for privacy
+        })
+
+        # Simple command parsing and routing
+        command_lower = command.lower()
+
+        # Document-related commands
+        if any(word in command_lower for word in ['carica', 'upload', 'documento', 'file']):
+            st.session_state['show_quick_upload'] = True
+            st.success("📤 Ti mostro il form di caricamento!")
+            st.rerun()
+
+        # Chat/search commands
+        elif any(word in command_lower for word in ['cerca', 'trova', 'chiedi', 'dimmi', 'spiega']):
+            # Pre-fill chat with the command
+            st.session_state['universal_chat_command'] = command
+            st.switch_page("pages/1_Chat.py")
+
+        # Archive exploration
+        elif any(word in command_lower for word in ['archivio', 'documenti', 'esplora']):
+            st.switch_page("pages/2_Archivio.py")
+
+        # Creation commands
+        elif any(word in command_lower for word in ['crea', 'nuovo', 'scrivi']):
+            st.switch_page("pages/4_Nuovo.py")
+
+        # Help commands
+        elif any(word in command_lower for word in ['aiuto', 'guida', 'come']):
+            from ux_components import show_contextual_help
+            show_contextual_help("general_help")
+
+        # Default: go to chat
+        else:
+            st.session_state['universal_chat_command'] = command
+            st.switch_page("pages/1_Chat.py")
+
+    except Exception as e:
+        st.error(f"Errore nel processamento comando: {e}")
+        # Fallback to chat
+        st.session_state['universal_chat_command'] = command
+        st.switch_page("pages/1_Chat.py")
+
+def show_quick_upload_form(user_id: str):
+    """Form di upload rapido per la dashboard."""
+    with st.form("quick_upload_form"):
+        st.markdown("**📤 Upload Rapido**")
+
+        files = st.file_uploader(
+            "Seleziona file",
+            accept_multiple_files=True,
+            type=['pdf', 'docx', 'txt', 'rtf', 'html', 'htm']
+        )
+
+        if files:
+            st.success(f"📎 {len(files)} file selezionati")
+
+        submit_upload = st.form_submit_button("🚀 Carica", type="primary", use_container_width=True)
+
+        if submit_upload and files:
+            saved_files = []
+            for file in files:
+                save_path = os.path.join(DOCS_TO_PROCESS_DIR, file.name)
+                with open(save_path, "wb") as f:
+                    f.write(file.getbuffer())
+                saved_files.append(file.name)
+
+            if saved_files:
+                # Record upload activity
+                for file_name in saved_files:
+                    record_user_activity(user_id, 'quick_upload', 'document', file_name)
+
+                # Start processing
+                scan_and_process_documents(saved_files)
+
+                st.success(f"✅ {len(saved_files)} documenti caricati e inviati per processamento!")
+                st.session_state['show_quick_upload'] = False
+                st.rerun()
 
 if __name__ == "__main__":
     main()

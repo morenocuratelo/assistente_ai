@@ -238,6 +238,27 @@ def setup_database():
                 )
             """)
 
+            # Tabella per tracciamento attività utente (per dashboard intelligente)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_activity (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    action_type TEXT NOT NULL, -- 'view_doc', 'edit_doc', 'create_doc', 'start_chat', 'complete_task', etc.
+                    target_type TEXT, -- 'document', 'chat', 'task', 'course', etc.
+                    target_id TEXT, -- ID del target (document_id, chat_session_id, task_id, etc.)
+                    metadata TEXT, -- JSON con informazioni aggiuntive
+                    timestamp TEXT NOT NULL,
+                    session_id TEXT, -- Per raggruppare azioni per sessione
+                    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+                )
+            """)
+
+            # Aggiungi campo is_new_user alla tabella users se non esiste
+            cursor.execute("PRAGMA table_info(users)")
+            user_columns = [col[1] for col in cursor.fetchall()]
+            if 'is_new_user' not in user_columns:
+                cursor.execute("ALTER TABLE users ADD COLUMN is_new_user INTEGER DEFAULT 1")
+
             conn.commit()
             print("✅ Database verificato: tutte le tabelle sono pronte.")
     except sqlite3.Error as e:
@@ -1607,3 +1628,259 @@ def get_study_insights(user_id: int) -> dict:
     except Exception as e:
         print(f"Errore generazione insight: {e}")
         return {"insight": "Impossibile generare insight al momento"}
+
+# --- FUNZIONI PER TRACCIAMENTO ATTIVITÀ UTENTE (DASHBOARD INTELLIGENTE) ---
+
+def record_user_activity(user_id: int, action_type: str, target_type: str = None, target_id: str = None, metadata: dict = None):
+    """
+    Registra un'attività dell'utente per l'analisi comportamentale e la dashboard.
+
+    Args:
+        user_id: ID dell'utente
+        action_type: Tipo di azione ('view_doc', 'edit_doc', 'create_doc', 'start_chat', etc.)
+        target_type: Tipo di target ('document', 'chat', 'task', 'course', etc.)
+        target_id: ID specifico del target
+        metadata: Informazioni aggiuntive in formato JSON
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            from datetime import datetime
+            now = datetime.now().isoformat()
+            session_id = st.session_state.get('current_session_id', 'unknown')
+
+            cursor.execute("""
+                INSERT INTO user_activity (user_id, action_type, target_type, target_id, metadata, timestamp, session_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                user_id, action_type, target_type, target_id,
+                json.dumps(metadata) if metadata else None,
+                now, session_id
+            ))
+            conn.commit()
+    except Exception as e:
+        print(f"Errore nel tracciamento attività: {e}")
+        # Non bloccare l'app se il tracciamento fallisce
+
+def get_recent_documents(user_id: int, limit: int = 5) -> list:
+    """
+    Recupera gli ultimi documenti visualizzati o modificati dall'utente.
+
+    Returns:
+        list: Lista di documenti con metadati di accesso
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT DISTINCT p.*, ua.timestamp as last_accessed, ua.action_type as last_action
+                FROM papers p
+                JOIN user_activity ua ON (
+                    (ua.target_type = 'document' AND ua.target_id = p.file_name) OR
+                    (ua.action_type IN ('view_doc', 'edit_doc') AND ua.metadata LIKE '%' || p.file_name || '%')
+                )
+                WHERE ua.user_id = ?
+                ORDER BY ua.timestamp DESC
+                LIMIT ?
+            """, (user_id, limit))
+
+            documents = cursor.fetchall()
+            result = []
+            for doc in documents:
+                doc_dict = dict(doc)
+                if doc_dict.get('metadata'):
+                    try:
+                        doc_dict['metadata'] = json.loads(doc_dict['metadata'])
+                    except:
+                        doc_dict['metadata'] = {}
+                result.append(doc_dict)
+            return result
+    except Exception as e:
+        print(f"Errore nel recupero documenti recenti: {e}")
+        return []
+
+def get_recent_uploads(user_id: int, limit: int = 5) -> list:
+    """
+    Recupera gli ultimi file caricati dall'utente.
+
+    Returns:
+        list: Lista di upload recenti con metadati
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT p.*, ua.timestamp as upload_date, ua.metadata as upload_metadata
+                FROM papers p
+                JOIN user_activity ua ON ua.target_id = p.file_name
+                WHERE ua.user_id = ? AND ua.action_type = 'create_doc'
+                ORDER BY ua.timestamp DESC
+                LIMIT ?
+            """, (user_id, limit))
+
+            uploads = cursor.fetchall()
+            result = []
+            for upload in uploads:
+                upload_dict = dict(upload)
+                if upload_dict.get('upload_metadata'):
+                    try:
+                        upload_dict['upload_metadata'] = json.loads(upload_dict['upload_metadata'])
+                    except:
+                        upload_dict['upload_metadata'] = {}
+                result.append(upload_dict)
+            return result
+    except Exception as e:
+        print(f"Errore nel recupero upload recenti: {e}")
+        return []
+
+def get_user_activity_summary(user_id: int, days: int = 7) -> dict:
+    """
+    Fornisce un riassunto delle attività dell'utente negli ultimi giorni.
+
+    Returns:
+        dict: Statistiche di attività con breakdown per tipo
+    """
+    try:
+        from datetime import datetime, timedelta
+        cutoff_date = datetime.now() - timedelta(days=days)
+
+        with db_connect() as conn:
+            cursor = conn.cursor()
+
+            # Statistiche generali
+            cursor.execute("""
+                SELECT COUNT(*) as total_actions,
+                       COUNT(DISTINCT DATE(timestamp)) as active_days,
+                       COUNT(DISTINCT target_type) as different_targets
+                FROM user_activity
+                WHERE user_id = ? AND timestamp > ?
+            """, (user_id, cutoff_date.isoformat()))
+
+            general_stats = dict(cursor.fetchone())
+
+            # Breakdown per tipo di azione
+            cursor.execute("""
+                SELECT action_type, COUNT(*) as count
+                FROM user_activity
+                WHERE user_id = ? AND timestamp > ?
+                GROUP BY action_type
+                ORDER BY count DESC
+            """, (user_id, cutoff_date.isoformat()))
+
+            action_breakdown = [dict(row) for row in cursor.fetchall()]
+
+            # Documenti più accessati
+            cursor.execute("""
+                SELECT p.title, p.file_name, COUNT(*) as access_count,
+                       MAX(ua.timestamp) as last_accessed
+                FROM papers p
+                JOIN user_activity ua ON (
+                    ua.target_type = 'document' AND ua.target_id = p.file_name
+                )
+                WHERE ua.user_id = ? AND ua.timestamp > ?
+                GROUP BY p.file_name
+                ORDER BY access_count DESC
+                LIMIT 5
+            """, (user_id, cutoff_date.isoformat()))
+
+            top_documents = [dict(row) for row in cursor.fetchall()]
+
+            return {
+                'general_stats': general_stats,
+                'action_breakdown': action_breakdown,
+                'top_documents': top_documents,
+                'period_days': days
+            }
+    except Exception as e:
+        print(f"Errore nel recupero riassunto attività: {e}")
+        return {'general_stats': {}, 'action_breakdown': [], 'top_documents': []}
+
+def get_most_accessed_documents(user_id: int, limit: int = 10) -> list:
+    """
+    Recupera i documenti più accessati dall'utente.
+
+    Returns:
+        list: Documenti ordinati per numero di accessi
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT p.*, COUNT(ua.id) as access_count, MAX(ua.timestamp) as last_accessed
+                FROM papers p
+                JOIN user_activity ua ON (
+                    ua.target_type = 'document' AND ua.target_id = p.file_name
+                )
+                WHERE ua.user_id = ?
+                GROUP BY p.file_name
+                ORDER BY access_count DESC, last_accessed DESC
+                LIMIT ?
+            """, (user_id, limit))
+
+            documents = cursor.fetchall()
+            result = []
+            for doc in documents:
+                doc_dict = dict(doc)
+                doc_dict['last_accessed'] = doc_dict['last_accessed'][:10] if doc_dict['last_accessed'] else 'N/A'
+                result.append(doc_dict)
+            return result
+    except Exception as e:
+        print(f"Errore nel recupero documenti più accessati: {e}")
+        return []
+
+def check_first_time_user(user_id: int) -> bool:
+    """
+    Verifica se l'utente è al primo accesso.
+
+    Returns:
+        bool: True se è un nuovo utente
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT is_new_user FROM users WHERE id = ?", (user_id,))
+            result = cursor.fetchone()
+            return result and result['is_new_user'] == 1 if result else True
+    except Exception as e:
+        print(f"Errore nel controllo utente nuovo: {e}")
+        return True
+
+def mark_user_not_new(user_id: int):
+    """
+    Marca l'utente come non più nuovo (dopo la prima azione significativa).
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET is_new_user = 0 WHERE id = ?", (user_id,))
+            conn.commit()
+    except Exception as e:
+        print(f"Errore nell'aggiornamento stato utente: {e}")
+
+# --- FUNZIONI CACHE PER DASHBOARD ---
+
+@st.cache_data(ttl=30)  # Cache per 30 secondi
+def get_dashboard_data(user_id: int) -> dict:
+    """
+    Recupera tutti i dati necessari per la dashboard in una sola chiamata.
+
+    Returns:
+        dict: Dati aggregati per la dashboard
+    """
+    try:
+        return {
+            'recent_documents': get_recent_documents(user_id, limit=5),
+            'recent_uploads': get_recent_uploads(user_id, limit=5),
+            'activity_summary': get_user_activity_summary(user_id, days=7),
+            'most_accessed': get_most_accessed_documents(user_id, limit=10),
+            'is_new_user': check_first_time_user(user_id)
+        }
+    except Exception as e:
+        print(f"Errore nel recupero dati dashboard: {e}")
+        return {
+            'recent_documents': [],
+            'recent_uploads': [],
+            'activity_summary': {},
+            'most_accessed': [],
+            'is_new_user': True
+        }
