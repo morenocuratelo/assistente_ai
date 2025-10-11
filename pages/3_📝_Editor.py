@@ -107,7 +107,11 @@ def render_editor_interface():
 
         # Prova editor avanzato con fallback
         try:
-            from streamlit_quill import st_quill
+            from streamlit_quill import st_quill  # type: ignore
+
+            # Verifica che il componente sia disponibile
+            if not st_quill:
+                raise ImportError("st_quill non disponibile")
 
             edited_content = st_quill(
                 value=current_content,

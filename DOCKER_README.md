@@ -1,6 +1,6 @@
-# 🐳 Docker Deployment per Archivista AI
+# 🐳 Docker Deployment per Archivista AI v2.3
 
-Questa guida spiega come eseguire Archivista AI utilizzando Docker e Docker Compose per un ambiente completamente containerizzato.
+Questa guida spiega come eseguire Archivista AI v2.3 utilizzando Docker e Docker Compose per un ambiente completamente containerizzato con architettura multi-pagina.
 
 ## 📋 Prerequisiti
 

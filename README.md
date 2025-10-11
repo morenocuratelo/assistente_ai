@@ -1,18 +1,48 @@
-# 📚 Archivista AI v1.3.0 (Alpha 1.3)
+# 📚 Archivista AI v2.3.0 (Alpha 2.3)
 
-**Sistema Intelligente per l'Archiviazione e l'Interrogazione di Documenti Scientifici**
+**Sistema Intelligente per l'Archiviazione e l'Interrogazione di Documenti con Architettura Multi-Pagina**
 
-Archivista AI è un'applicazione web avanzata che utilizza l'intelligenza artificiale per processare, indicizzare e rendere interrogabili documenti scientifici in formato PDF e DOCX. Il sistema è basato su LlamaIndex e offre un'interfaccia utente moderna costruita con Streamlit.
+Archivista AI è un'applicazione web avanzata che utilizza l'intelligenza artificiale per processare, indicizzare e rendere interrogabili documenti scientifici e accademici. Il sistema è basato su LlamaIndex e offre un'interfaccia utente moderna costruita con Streamlit con architettura multi-pagina ottimizzata.
 
 ## ✨ Caratteristiche Principali
 
-- 🔍 **Ricerca Intelligente**: Interrogazione semantica dei documenti con supporto per filtri avanzati
+- 💬 **Chat Multi-Modale**: Interfaccia conversazionale avanzata con supporto immagini e documenti
+- 🔍 **Ricerca Semantica**: Motore di ricerca intelligente con comprensione del contesto
+- 📝 **Editor Avanzato**: Modifica professionale delle anteprime con editor rich-text
+- 🗂️ **Archivio Intelligente**: Organizzazione automatica e categorizzazione dei documenti
 - 🤖 **Elaborazione AI**: Estrazione automatica di metadati, riassunti e anteprime
-- 📁 **Gestione Documenti**: Organizzazione automatica e categorizzazione dei file
 - 🔄 **Elaborazione Asincrona**: Processamento in background con Celery e Redis
 - 🐳 **Containerizzazione**: Deployment semplificato con Docker
 - 📊 **Dashboard Interattiva**: Interfaccia web moderna e responsiva
 - 🔐 **Persistenza Dati**: Database SQLite con backup automatico
+
+## 📱 Architettura Multi-Pagina
+
+L'applicazione utilizza un'architettura multi-pagina ottimizzata per diverse funzionalità:
+
+### 💬 **Chat** (Pagina Principale)
+- **Interfaccia conversazionale** con i documenti
+- **Supporto multimodale** (testo + immagini)
+- **Ricerca semantica** in tempo reale
+- **Chat history** e contesto persistente
+
+### 🗂️ **Archivio**
+- **Esplorazione documenti** con filtri avanzati
+- **Visualizzazione metadati** estratti dall'AI
+- **Ricerca full-text** e semantica
+- **Gestione categorie** e organizzazione
+
+### 📝 **Editor**
+- **Editor rich-text avanzato** con Streamlit Quill
+- **Modifica anteprime** generate dall'AI
+- **Visualizzatore documenti** affiancato
+- **Auto-salvataggio** e validazione modifiche
+
+### ✨ **Nuovo**
+- **Creazione documenti** direttamente nell'app
+- **Template personalizzati** per diversi tipi di contenuto
+- **Integrazione AI** per generazione assistita
+- **Salvataggio automatico** nel database
 
 ## 🚀 Avvio Rapido
 
@@ -111,7 +141,7 @@ ollama pull llava-llama3
 archivista-ai/
 ├── 📄 main.py                 # Applicazione Streamlit principale
 ├── 📄 tasks.py                # Configurazione Celery e task
-├── 📄 archivista_tasks.py     # Task specifiche per l'archiviazione
+├── 📄 archivista_processing.py # Task specifiche per l'archiviazione
 ├── 📄 config.py               # Configurazione LlamaIndex
 ├── 📄 file_utils.py           # Utilità per la gestione file
 ├── 📄 tools.py                # Strumenti AI e ricerca web
@@ -123,6 +153,11 @@ archivista-ai/
 ├── 📚 CELERY_README.md       # Documentazione Celery
 ├── 📚 DOCKER_README.md       # Documentazione Docker
 ├── 📚 README.md              # Questo file
+├── 📁 pages/                 # Pagine dell'applicazione multi-pagina
+│   ├── 1_💬_Chat.py          # Chat principale (conversazionale)
+│   ├── 2_🗂️_Archivio.py      # Esplorazione e gestione archivio
+│   ├── 3_📝_Editor.py         # Editor avanzato anteprime
+│   └── 4_✨_Nuovo.py          # Creazione nuovi documenti
 └── 📁 db_memoria/            # Database e indici
     ├── metadata.sqlite       # Database metadati
     ├── index_store.json      # Store degli indici
@@ -331,32 +366,66 @@ docker-compose exec worker bash
 
 ## 🔄 Changelog
 
-### Versione 1.3.1 (Alpha 1.3) - 2025-01-XX
+### Versione 2.3.0 (Alpha 2.3) - Gennaio 2025
+
+**🆕 Architettura Multi-Pagina Completa:**
+- ✅ **4 Pagine Specializzate**: Chat, Archivio, Editor, Nuovo
+- ✅ **Navigazione Persistente**: Sidebar unificata tra tutte le pagine
+- ✅ **Streamlit Pages**: Utilizzo nativo del sistema multi-pagina
+- ✅ **Ottimizzazione UX**: Ogni pagina dedicata al suo scopo specifico
+
+**💬 Chat Multi-Modale:**
+- ✅ **Interfaccia Conversazionale**: Chat principale ottimizzata
+- ✅ **Supporto Immagini**: Integrazione con modelli multimodali
+- ✅ **Ricerca Semantica**: Comprensione avanzata del contesto
+- ✅ **Chat History**: Persistenza conversazioni
+
+**📝 Editor Avanzato:**
+- ✅ **Streamlit Quill**: Editor rich-text professionale
+- ✅ **Modifica Anteprime**: Modifica diretta anteprime AI
+- ✅ **Visualizzatore Documenti**: Vista affiancata originale/modificato
+- ✅ **Auto-salvataggio**: Backup automatico modifiche
+
+**🗂️ Archivio Intelligente:**
+- ✅ **Esplorazione Avanzata**: Filtri multipli e ricerca
+- ✅ **Gestione Metadati**: Visualizzazione e modifica completa
+- ✅ **Organizzazione Categorie**: Sistema di categorizzazione automatico
+- ✅ **Ricerca Full-Text**: Motore di ricerca ottimizzato
+
+**✨ Nuovo Documento:**
+- ✅ **Creazione Assistita**: AI-powered document creation
+- ✅ **Template System**: Modelli per diversi tipi di contenuto
+- ✅ **Integrazione Database**: Salvataggio automatico
+- ✅ **Editor Integrato**: Composizione diretta nell'app
+
+**🔧 Miglioramenti Tecnici:**
+- ✅ **Architettura Modulare**: Codice organizzato per funzionalità
+- ✅ **Performance Ottimizzate**: Caricamento lazy e caching
+- ✅ **Error Handling**: Gestione errori avanzata
+- ✅ **Type Safety**: Annotazioni tipo migliorate
+
+**🐛 Bug Fixes:**
+- ✅ **Risolto conflitto modulo statistics**: Rinominato `statistics.py` in `archive_statistics.py`
+- ✅ **Fix Import streamlit-quill**: Risoluzione warning Pylance
+- ✅ **Miglioramento Stabilità**: Fix crash e memory leak
+- ✅ **UI Responsiva**: Ottimizzazione interfaccia mobile
+
+### Versione 2.2.0 (Alpha 2.2) - Dicembre 2024
 
 **🆕 Nuove Funzionalità:**
-- ✅ Architettura Celery completa per elaborazione asincrona
+- ✅ Sistema di elaborazione asincrona Celery
 - ✅ Containerizzazione Docker completa
 - ✅ Dashboard di monitoraggio Flower
 - ✅ Sistema di status in tempo reale
-- ✅ Supporto per modelli LLM multipli
 
 **🔧 Miglioramenti:**
 - ✅ Ottimizzazione performance processamento
 - ✅ Migliore gestione errori e recovery
 - ✅ Interfaccia utente migliorata
-- ✅ Documentazione completa e aggiornata
-- ✅ Guida rapida di avvio semplificata
-
-**🐛 Bug Fixes:**
-- ✅ **Risolto conflitto modulo statistics**: Rinominato `statistics.py` in `archive_statistics.py` per evitare conflitti con il modulo standard Python
-- ✅ Risoluzione problemi di memoria
-- ✅ Fix gestione file di grandi dimensioni
-- ✅ Miglioramento stabilità worker
 
 ### Versioni Precedenti
 
-- **v1.2.2**: Miglioramenti UI e ottimizzazioni
-- **v1.0.2**: Release iniziale con funzionalità base
+- **v1.0.0**: Release iniziale con funzionalità base
 
 ## 📞 Supporto
 

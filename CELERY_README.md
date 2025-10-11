@@ -1,10 +1,10 @@
-# Celery + Redis Setup per Archivista AI
+# Celery + Redis Setup per Archivista AI v2.3
 
-Questa guida spiega come configurare e utilizzare Celery con Redis per l'elaborazione asincrona delle task in Archivista AI.
+Questa guida spiega come configurare e utilizzare Celery con Redis per l'elaborazione asincrona delle task in Archivista AI v2.3 con architettura multi-pagina.
 
-## 🆕 Nuova Architettura (v1.5.0+)
+## 🆕 Architettura Multi-Pagina (v2.3.0+)
 
-**IMPORTANTE**: A partire dalla versione 1.5.0, `archivista.py` è stato sostituito con un sistema basato su Celery worker. Il processamento dei documenti avviene ora completamente in background tramite task asincrone.
+**IMPORTANTE**: Archivista AI v2.3 utilizza un'architettura multi-pagina completa con 4 pagine specializzate. Il processamento dei documenti avviene completamente in background tramite task Celery asincrone, mentre l'interfaccia utente è organizzata in pagine ottimizzate per funzioni specifiche.
 
 ### 🔄 Nuovo Workflow
 
