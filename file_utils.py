@@ -960,7 +960,7 @@ def delete_task(task_id: int):
 
 # --- FUNZIONI PER LA GESTIONE DEL GRAFO DELLA CONOSCENZA ---
 
-def create_concept_entity(user_id: int, entity_type: str, entity_name: str, entity_description: str = None, source_file_name: str, confidence_score: float = 0.5) -> int:
+def create_concept_entity(user_id: int, entity_type: str, entity_name: str, source_file_name: str, entity_description: str = None, confidence_score: float = 0.5) -> int:
     """Crea una nuova entità concettuale."""
     try:
         with db_connect() as conn:
