@@ -57,7 +57,7 @@ def main():
             col_quick1, col_quick2 = st.columns([0.7, 0.3])
             with col_quick2:
                 if st.button("✨ Crea Nuovo", key="quick_new_doc", use_container_width=True):
-                    st.switch_page("pages/4_✨_Nuovo.py")
+                    st.switch_page("pages/4_Nuovo.py")
 
             render_file_explorer_view()
 
@@ -282,7 +282,7 @@ def display_list_view(files_data):
 
                 if st.button("✏️ Modifica Anteprima", key=f"edit_preview_{i}"):
                     st.session_state.edit_paper = file_obj['name']
-                    st.switch_page("pages/3_📝_Editor.py")
+                    st.switch_page("pages/3_Editor.py")
 
                 if st.button("🗑️ Elimina", key=f"delete_{i}"):
                     st.session_state.action_file = file_obj

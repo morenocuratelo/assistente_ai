@@ -218,7 +218,7 @@ def process_user_message(user_id, session_id, user_input):
             memory_summary = get_user_memory_summary(user_id)
 
             # Combina contesto documenti con memoria utente
-            full_context = f"{context}\\n\\n{memory_summary}"
+            full_context = f"{context}\n\n{memory_summary}"
 
             # Genera risposta AI
             from prompt_manager import get_prompt
@@ -271,7 +271,6 @@ def get_chat_context(query):
                 context_parts.append(f"""
 **Documento: {paper.get('title', paper['file_name'])}**
 Categoria: {paper.get('category_name', 'N/A')}
-{chr(10).join(paper['formatted_preview'].split('\\n')[:5])}...
                 """)
 
                 if len(context_parts) >= 3:  # Limita a 3 documenti
@@ -352,7 +351,7 @@ def show_document_previews():
                 # Pulsante modifica anteprima
                 if st.button("✏️ Modifica Anteprima", key="chat_edit_preview"):
                     st.session_state.edit_paper = doc_data['file_name']
-                    st.switch_page("pages/3_📝_Editor.py")
+                    st.switch_page("pages/3_Editor.py")
 
                 # Link ai metadati per debug
                 if st.checkbox("Mostra metadati completi", key="show_debug_info"):

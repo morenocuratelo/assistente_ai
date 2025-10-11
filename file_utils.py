@@ -225,7 +225,14 @@ def setup_database():
                     topics_covered TEXT, -- JSON array of topic strings
                     notes TEXT,
                     productivity_rating INTEGER CHECK (productivity_rating >= 1 AND productivity_rating <= 5),
+                    is_planned INTEGER DEFAULT 0, -- 0=storico, 1=pianificato
+                    planned_date TEXT, -- Data pianificata per sessioni future
+                    planned_duration INTEGER, -- Durata pianificata in minuti
+                    priority_score REAL DEFAULT 0.5, -- Importanza calcolata (0-1)
+                    ai_recommendation TEXT, -- Suggerimento IA per questa sessione
+                    completed_at TEXT, -- Quando completata (per sessioni pianificate)
                     created_at TEXT NOT NULL,
+                    updated_at TEXT, -- Ultima modifica
                     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                     FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE SET NULL
                 )
@@ -1311,3 +1318,292 @@ def get_user_study_sessions(user_id: int, limit: int = 20) -> list:
     except Exception as e:
         print(f"Errore nel recupero delle sessioni di studio: {e}")
         return []
+
+# --- ASSISTENTE CALENDARIZZATORE IA ---
+
+def create_planned_study_session(user_id: int, planned_date: str, planned_duration: int,
+                               course_id: int = None, topics: list = None,
+                               priority_score: float = 0.5, ai_recommendation: str = None) -> int:
+    """
+    Crea una nuova sessione di studio pianificata per il futuro.
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            from datetime import datetime
+            now = datetime.now().isoformat()
+
+            cursor.execute("""
+                INSERT INTO study_sessions (
+                    user_id, planned_date, planned_duration, course_id,
+                    topics_covered, priority_score, ai_recommendation,
+                    is_planned, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+            """, (
+                user_id, planned_date, planned_duration, course_id,
+                json.dumps(topics) if topics else None, priority_score,
+                ai_recommendation, now, now
+            ))
+
+            session_id = cursor.lastrowid
+            conn.commit()
+            return session_id
+    except Exception as e:
+        print(f"Errore nella creazione della sessione pianificata: {e}")
+        raise
+
+def get_today_planned_sessions(user_id: int) -> list:
+    """Recupera le sessioni pianificate per oggi."""
+    try:
+        from datetime import datetime
+        today = datetime.now().date().isoformat()
+
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT ss.*, c.course_name, c.course_code
+                FROM study_sessions ss
+                LEFT JOIN courses c ON ss.course_id = c.id
+                WHERE ss.user_id = ? AND ss.planned_date = ? AND ss.is_planned = 1
+                AND (ss.completed_at IS NULL OR ss.completed_at > ?)
+                ORDER BY ss.priority_score DESC, ss.planned_date ASC
+            """, (user_id, today, datetime.now().isoformat()))
+
+            sessions = cursor.fetchall()
+            result = []
+            for session in sessions:
+                session_dict = dict(session)
+                if session_dict['topics_covered']:
+                    session_dict['topics_covered'] = json.loads(session_dict['topics_covered'])
+                result.append(session_dict)
+            return result
+    except Exception as e:
+        print(f"Errore nel recupero sessioni pianificate per oggi: {e}")
+        return []
+
+def generate_study_schedule(user_id: int, days_ahead: int = 7) -> dict:
+    """
+    Genera un piano di studio intelligente basato sull'analisi dei dati disponibili.
+    """
+    try:
+        from datetime import datetime, timedelta
+        from config import get_chat_llm
+
+        # Analizza dati attuali
+        courses = get_user_courses(user_id)
+        all_tasks = get_user_tasks(user_id)
+
+        # Filtra task attivi (non completati)
+        active_tasks = [t for t in all_tasks if t['status'] in ['pending', 'in_progress']]
+
+        # Recupera lezioni future (nei prossimi giorni)
+        future_lectures = []
+        for course in courses:
+            lectures = get_course_lectures(course['id'])
+            for lecture in lectures:
+                if lecture['lecture_date']:
+                    lecture_date = datetime.fromisoformat(lecture['lecture_date']).date()
+                    today = datetime.now().date()
+                    days_until = (lecture_date - today).days
+                    if 0 <= days_until <= days_ahead:
+                        future_lectures.append({
+                            'id': lecture['id'],
+                            'title': lecture['lecture_title'],
+                            'course_name': course['course_name'],
+                            'date': lecture['lecture_date'],
+                            'days_until': days_until,
+                            'course_id': course['id']
+                        })
+
+        # Recupera storico prestazioni
+        study_sessions = get_user_study_sessions(user_id, limit=20)
+        avg_session_length = sum([s['duration_minutes'] or 0 for s in study_sessions]) / len(study_sessions) if study_sessions else 60
+        avg_productivity = sum([s['productivity_rating'] or 3 for s in study_sessions]) / len(study_sessions) if study_sessions else 3
+
+        # Genera priorità per ogni giorno
+        schedule = {}
+        base_date = datetime.now().date()
+
+        for day_offset in range(days_ahead + 1):
+            current_date = base_date + timedelta(days=day_offset)
+
+            # Trova lezioni di questo giorno
+            day_lectures = [l for l in future_lectures if l['date'].startswith(str(current_date))]
+            # Trova task in scadenza entro questa settimana
+            urgent_tasks = [
+                t for t in active_tasks
+                if t.get('due_date') and
+                (datetime.fromisoformat(t['due_date']).date() - base_date).days <= 7
+            ]
+
+            schedule[str(current_date)] = {
+                'lectures': day_lectures,
+                'urgent_tasks': urgent_tasks[:3],  # Max 3 per giorno
+                'suggested_sessions': []
+            }
+
+        # Usa AI per generare suggerimenti intelligenti
+        context_prompt = f"""
+Sei un assistente di calendarizzazione intelligente per studenti universitari.
+Basandoti sui dati forniti, genera suggerimenti di studio personalizzati.
+
+CONTESTO STUDENTE:
+- Sessioni medie: {avg_session_length:.0f} minuti
+- Produttività media: {avg_productivity:.1f}/5
+- Corsi attivi: {len(courses)}
+- Task attivi: {len(active_tasks)}
+- Lezioni future nei prossimi {days_ahead} giorni: {len(future_lectures)}
+
+CALENDARIO LEZIONI FUTURE:
+{future_lectures[:10]}  # Mostra max 10
+
+TASK URGENTI:
+{[(t['task_title'], t.get('priority', 'medium'), t.get('due_date')[:10] if t.get('due_date') else None) for t in active_tasks[:15] if t.get('due_date')][:10]}
+
+Genera un JSON con suggerimenti di studio per i prossimi {days_ahead} giorni.
+Ogni giorno dovrebbe avere al massimo 2 sessioni da 45-90 minuti.
+Priorità: lezioni tomorrow > task in scadenza > ripasso argomenti trattati recentemente > nuovi contenuti.
+
+Formato JSON:
+{{
+  "schedule": {{
+    "2025-10-15": [
+      {{
+        "topic": "Preparazione esame Algebra Lineare",
+        "duration_minutes": 90,
+        "priority": 0.9,
+        "reasoning": "Esame tra 2 settimane, focati sui concetti fondamentali"
+      }}
+    ]
+  }},
+  "weekly_insights": ["Stringhe di insight sulla settimana"]
+}}
+"""
+
+        try:
+            llm = get_chat_llm()
+            ai_response = str(llm.complete(context_prompt))
+
+            # Estrai JSON dalla risposta
+            start_idx = ai_response.find('{')
+            end_idx = ai_response.rfind('}') + 1
+            if start_idx >= 0 and end_idx > start_idx:
+                json_str = ai_response[start_idx:end_idx]
+                ai_schedule = json.loads(json_str)
+
+                # Integra i suggerimenti AI nel calendario
+                if 'schedule' in ai_schedule:
+                    for date_str, suggestions in ai_schedule['schedule'].items():
+                        if date_str in schedule:
+                            schedule[date_str]['ai_suggestions'] = suggestions
+                            schedule[date_str]['weekly_insights'] = ai_schedule.get('weekly_insights', [])
+
+        except Exception as e:
+            print(f"Errore generazione AI schedule: {e}")
+            # Procedi senza suggerimenti AI
+
+        return schedule
+
+    except Exception as e:
+        print(f"Errore generazione piano di studio: {e}")
+        return {}
+
+def implement_generated_schedule(user_id: int, schedule: dict) -> int:
+    """
+    Crea effettivamente le sessioni pianificate dal piano generato.
+    """
+    sessions_created = 0
+    try:
+        for date_str, day_data in schedule.items():
+            if 'ai_suggestions' in day_data:
+                for suggestion in day_data['ai_suggestions']:
+                    try:
+                        session_id = create_planned_study_session(
+                            user_id=user_id,
+                            planned_date=date_str,
+                            planned_duration=suggestion.get('duration_minutes', 60),
+                            course_id=None,  # Da determinare meglio
+                            topics=[suggestion.get('topic', 'Studio generale')],
+                            priority_score=suggestion.get('priority', 0.5),
+                            ai_recommendation=suggestion.get('reasoning', '')
+                        )
+                        sessions_created += 1
+                    except Exception as e:
+                        print(f"Errore creazione sessione pianificata {date_str}: {e}")
+
+        return sessions_created
+
+    except Exception as e:
+        print(f"Errore implementazione piano: {e}")
+        return 0
+
+def get_materials_for_lecture(lecture_id: int) -> list:
+    """Recupera tutti i materiali associati a una lezione."""
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT m.*, p.title, p.authors, p.category_name
+                FROM materials m
+                LEFT JOIN papers p ON m.file_name = p.file_name
+                WHERE m.lecture_id = ?
+                ORDER BY m.processed_at DESC
+            """, (lecture_id,))
+
+            materials = cursor.fetchall()
+            return [dict(material) for material in materials]
+    except Exception as e:
+        print(f"Errore nel recupero materiali per lezione {lecture_id}: {e}")
+        return []
+
+def get_study_insights(user_id: int) -> dict:
+    """
+    Fornisce insight sul pattern di studio dello studente.
+    """
+    try:
+        from datetime import datetime
+        sessions = get_user_study_sessions(user_id, limit=50)
+
+        if not sessions:
+            return {"insight": "Inizia a registrare le tue sessioni di studio per ricevere insight personalizzati!"}
+
+        # Calcola statistiche base
+        total_sessions = len(sessions)
+        completed_sessions = len([s for s in sessions if s.get('session_end')])
+        avg_duration = sum([s.get('duration_minutes', 0) for s in sessions if s.get('session_end')]) / completed_sessions if completed_sessions > 0 else 0
+        avg_productivity = sum([s.get('productivity_rating', 3) for s in sessions if s.get('session_end')]) / completed_sessions if completed_sessions > 0 else 3
+
+        # Pattern giornaliero
+        weekday_counts = {}
+        for session in sessions:
+            if session.get('session_start'):
+                start_datetime = datetime.fromisoformat(session['session_start'])
+                weekday = start_datetime.strftime('%A')
+                weekday_counts[weekday] = weekday_counts.get(weekday, 0) + 1
+
+        most_productive_day = max(weekday_counts.items(), key=lambda x: x[1])[0] if weekday_counts else "N/A"
+
+        # Performance trend
+        recent_sessions = sessions[:10]  # Ultime 10
+        recent_avg_prod = sum([s.get('productivity_rating', 3) for s in recent_sessions]) / len(recent_sessions)
+
+        trend = "costante"
+        if recent_avg_prod > avg_productivity + 0.3:
+            trend = "migliorativo 📈"
+        elif recent_avg_prod < avg_productivity - 0.3:
+            trend = "peggiorativo 📉"
+
+        return {
+            "total_sessions": total_sessions,
+            "completed_sessions": completed_sessions,
+            "avg_duration_minutes": round(avg_duration, 1),
+            "avg_productivity": round(avg_productivity, 1),
+            "most_productive_day": most_productive_day,
+            "productivity_trend": trend,
+            "insight": f"Le tue sessioni sono in media di {avg_duration:.0f} minuti con produttività {avg_productivity:.1f}/5. "
+                      f"Giorno più produttivo: {most_productive_day}. Trend recente: {trend}"
+        }
+
+    except Exception as e:
+        print(f"Errore generazione insight: {e}")
+        return {"insight": "Impossibile generare insight al momento"}

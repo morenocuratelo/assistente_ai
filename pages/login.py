@@ -27,27 +27,9 @@ def main():
         show_registration_form()
 
 def show_logged_in_page():
-    """Mostra la pagina quando l'utente è già loggato."""
-    st.title(f"👋 Benvenuto, {st.session_state.get('username', 'Utente')}!")
-    st.success("Sei già connesso al sistema.")
-
-    col1, col2 = st.columns([0.7, 0.3])
-
-    with col1:
-        st.markdown("""
-        **Perfetta! Ora puoi:**
-
-        - 💬 **Chattare** con i tuoi documenti usando l'AI
-        - 📚 **Esplorare** il tuo archivio personale
-        - ✏️ **Modificare** le anteprime generate dall'AI
-         """)
-
-    with col2:
-        if st.button("🚪 Logout", type="secondary", use_container_width=True):
-            logout_user()
-
-        if st.button("💬 Vai alla Chat", type="primary", use_container_width=True):
-            st.switch_page("pages/1_💬_Chat.py")
+    """Redirect automaticamente alla dashboard quando utente è già loggato."""
+    # Reindirizamento automatico e immediato alla dashboard
+    st.switch_page("main.py")
 
 def show_login_form():
     """Mostra il form di login."""
@@ -68,8 +50,8 @@ def show_login_form():
             if user:
                 st.session_state['user_id'] = user['id']
                 st.session_state['username'] = user['username']
-                st.success(f"Benvenuto, {user['username']}!")
-                st.rerun()
+                st.success(f"Benvenuto, {user['username']}! Reindirizzamento alla dashboard...")
+                st.switch_page("main.py")  # Redirect to dashboard
             else:
                 st.error("Username o password non validi.")
 
@@ -116,7 +98,7 @@ def show_registration_form():
                 if user:
                     st.session_state['user_id'] = user['id']
                     st.session_state['username'] = user['username']
-                    st.success("Benvenuto nel sistema! Sarai reindirizzato alla chat...")
+                    st.success("Benvenuto nel sistema! Sarai reindirizzato alla tua dashboard...")
                     st.rerun()
                 else:
                     st.warning("Registrazione completata, ma il login automatico ha fallito. Usa il form di login.")

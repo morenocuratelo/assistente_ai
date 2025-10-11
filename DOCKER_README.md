@@ -1,6 +1,6 @@
-# 🐳 Docker Deployment per Archivista AI v2.3
+# 🐳 Docker Deployment per Archivista AI v2.4.0 (Alpha 2.4)
 
-Questa guida spiega come eseguire Archivista AI v2.3 utilizzando Docker e Docker Compose per un ambiente completamente containerizzato con architettura multi-pagina.
+Questa guida spiega come eseguire Archivista AI v2.4.0 (Alpha 2.4) - **Phase 3: Intelligent Academic Ecosystem** utilizzando Docker e Docker Compose per un ambiente completamente containerizzato con architettura multi-pagina avanzata e sistema di gamification integrato.
 
 ## 📋 Prerequisiti
 
