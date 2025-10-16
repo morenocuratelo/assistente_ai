@@ -1,6 +1,7 @@
 """
 Questo file contiene la logica di business principale per il processamento
 dei documenti. La funzione qui definita viene registrata come task Celery.
+Implementa il framework di diagnosi e gestione errori avanzato.
 """
 import os
 import shutil
@@ -10,6 +11,15 @@ import time
 from datetime import datetime
 from pydantic import BaseModel, Field
 from typing import List, Optional
+
+# Import del framework di diagnosi errori
+from error_diagnosis_framework import (
+    error_framework,
+    ProcessingState,
+    ProcessingPhase,
+    ErrorCategory,
+    ErrorSeverity
+)
 
 # Import per l'estrazione granulare del testo
 import fitz
@@ -291,14 +301,46 @@ def classify_document(text_content):
     time_limit=360
 )
 def process_document_task(self, file_path):
+    """
+    Task principale di processamento documenti con framework di diagnosi errori avanzato.
+
+    Implementa:
+    - Tracciamento completo dello stato di processamento
+    - Gestione errori strutturata con classificazione automatica
+    - Sistema di retry intelligente con backoff esponenziale
+    - Quarantena automatica per file problematici
+    - Logging strutturato con correlazione ID
+    """
     file_name = os.path.basename(file_path)
+    correlation_id = error_framework.generate_correlation_id()
+
+    # Inizializza tracciamento processamento
+    try:
+        error_framework.initialize_processing_status(file_name, file_path)
+        error_framework.update_processing_state(
+            file_name,
+            ProcessingState.QUEUED,
+            ProcessingPhase.PHASE_1,
+            correlation_id=correlation_id
+        )
+    except Exception as e:
+        error_framework.logger.critical(f"Failed to initialize processing for {file_name}: {e}",
+                                      extra={"correlation_id": correlation_id})
+        return {'status': 'initialization_failed', 'file_name': file_name, 'error': str(e)}
+
     lock_file = file_path + ".lock"
 
     # Check for existing lock with timeout
     if os.path.exists(lock_file):
         lock_age = time.time() - os.path.getmtime(lock_file)
         if lock_age < 600:  # Increased timeout to 10 minutes
-            update_status(f"File già in elaborazione da {lock_age:.0f}s", file_name)
+            error_framework.update_processing_state(
+                file_name,
+                ProcessingState.PROCESSING,
+                ProcessingPhase.PHASE_1,
+                error_message=f"File già in elaborazione da {lock_age:.0f}s",
+                correlation_id=correlation_id
+            )
             print(f"⏳ {file_name} già in elaborazione, attendo...")
             return {'status': 'already_processing', 'file_name': file_name}
         else:
@@ -311,15 +353,44 @@ def process_document_task(self, file_path):
             with open(lock_file, "w") as f:
                 f.write(f"{os.getpid()},{time.time()}")
         except Exception as e:
-            print(f"❌ Errore creazione lock per {file_name}: {e}")
-            return {'status': 'lock_error', 'file_name': file_name}
+            error_msg = f"Errore creazione lock per {file_name}: {e}"
+            error_framework.update_processing_state(
+                file_name,
+                ProcessingState.FAILED_PARSING,
+                ProcessingPhase.PHASE_1,
+                error_message=error_msg,
+                correlation_id=correlation_id
+            )
+            return {'status': 'lock_error', 'file_name': file_name, 'error': error_msg}
 
-        initialize_services()
-        setup_database()
+        # Inizializza servizi
+        try:
+            initialize_services()
+            setup_database()
+        except Exception as e:
+            error_record = error_framework.classify_error(e, file_name, ProcessingPhase.PHASE_1)
+            error_framework.record_error(error_record, correlation_id)
+            error_framework.update_processing_state(
+                file_name,
+                error_record.processing_state,
+                ProcessingPhase.PHASE_1,
+                error_message=error_record.error_message,
+                error_details=error_record.error_details,
+                correlation_id=correlation_id
+            )
+            raise
 
+        # Verifica servizi AI
         if Settings.llm is None or Settings.embed_model is None:
             raise ConnectionError("Servizi AI non disponibili. Controlla la connessione e i modelli.")
 
+        # Aggiorna stato a PROCESSING
+        error_framework.update_processing_state(
+            file_name,
+            ProcessingState.PROCESSING,
+            ProcessingPhase.PHASE_2,
+            correlation_id=correlation_id
+        )
         update_status("Avviato processamento", file_name)
         
         # 1. ESTRAZIONE TESTO
@@ -591,29 +662,98 @@ def process_document_task(self, file_path):
         return {'status': 'success', 'file_name': file_name, 'category': category_id}
 
     except Exception as e:
-        error_msg = f"Errore: {str(e)}"
-        print(f"❌ ERRORE nel processamento di {file_name}: {error_msg}")
-        update_status(error_msg, file_name)
+        """
+        Gestione errori avanzata con framework di diagnosi completo.
+        Classifica automaticamente l'errore e determina l'azione appropriata.
+        """
+        correlation_id = error_framework.generate_correlation_id()
 
-        # Non spostare in errore se è un problema di configurazione AI
-        if "LLM non disponibile" in str(e) or "Servizi AI non disponibili" in str(e):
-            print("⚠️ Errore di configurazione AI - non sposto il file in errore")
-            # Don't raise here, just return an error status
-            return {'status': 'ai_service_error', 'file_name': file_name, 'error': str(e)}
+        # Classifica l'errore automaticamente
+        try:
+            # Determina la fase corrente basata sullo stato di processamento
+            current_status = error_framework.get_processing_status(file_name)
+            current_phase = current_status.current_phase if current_status else ProcessingPhase.PHASE_2
 
-        # Sposta in errore solo per errori reali del documento
-        error_folder = os.path.join(DOCS_TO_PROCESS_DIR, "_error")
-        os.makedirs(error_folder, exist_ok=True)
-        if os.path.exists(file_path):
+            error_record = error_framework.classify_error(e, file_name, current_phase)
+            error_framework.record_error(error_record, correlation_id)
+
+            # Aggiorna stato di processamento
+            error_framework.update_processing_state(
+                file_name,
+                error_record.processing_state,
+                current_phase,
+                error_message=error_record.error_message,
+                error_details=error_record.error_details,
+                correlation_id=correlation_id
+            )
+
+            # Determina se il file dovrebbe essere ritentato
+            should_retry = error_framework.should_retry(file_name)
+            if should_retry:
+                error_framework.increment_retry_count(file_name)
+                print(f"🔄 File {file_name} sarà ritentato (tentativo {error_framework.get_processing_status(file_name).retry_count})")
+                return {
+                    'status': 'retry_scheduled',
+                    'file_name': file_name,
+                    'error': str(e),
+                    'retry_count': error_framework.get_processing_status(file_name).retry_count
+                }
+
+            # Se non è un errore di configurazione AI, sposta in quarantena
+            if not any(err_type in str(e).lower() for err_type in ["llm non disponibile", "servizi ai non disponibili", "ai service"]):
+                try:
+                    quarantine_path = error_framework.move_to_quarantine(
+                        file_name,
+                        file_path,
+                        error_record.error_message,
+                        error_record.error_details
+                    )
+                    print(f"🚫 File {file_name} spostato in quarantena: {quarantine_path}")
+                except Exception as quarantine_error:
+                    print(f"⚠️ Errore spostamento in quarantena per {file_name}: {quarantine_error}")
+
+            # Log finale dell'errore
+            error_framework.logger.error(
+                f"Processing failed for {file_name}: {error_record.error_message}",
+                extra={
+                    "correlation_id": correlation_id,
+                    "file_name": file_name,
+                    "error_category": error_record.error_category.value,
+                    "error_severity": error_record.error_severity.value,
+                    "processing_state": error_record.processing_state.value,
+                    "retry_eligible": should_retry
+                }
+            )
+
+            return {
+                'status': 'processing_failed',
+                'file_name': file_name,
+                'error': str(e),
+                'error_category': error_record.error_category.value,
+                'retry_eligible': should_retry
+            }
+
+        except Exception as framework_error:
+            # Fallback se anche il framework di errore fallisce
+            print(f"❌ CRITICAL: Errore nel framework di diagnosi per {file_name}: {framework_error}")
+            print(f"❌ ERRORE ORIGINALE: {str(e)}")
+
+            # Sposta comunque il file in quarantena come misura di sicurezza
             try:
-                print(f"📁 Sposto {file_name} nella cartella errori")
-                shutil.move(file_path, os.path.join(error_folder, file_name))
-                print(f"✅ File {file_name} spostato nella cartella errori")
+                error_folder = os.path.join(DOCS_TO_PROCESS_DIR, "_error")
+                os.makedirs(error_folder, exist_ok=True)
+                if os.path.exists(file_path):
+                    shutil.move(file_path, os.path.join(error_folder, file_name))
+                    print(f"📁 File {file_name} spostato nella cartella errori (fallback)")
             except Exception as move_error:
-                print(f"⚠️ Errore spostamento file {file_name}: {move_error}")
+                print(f"⚠️ Errore spostamento file {file_name} (fallback): {move_error}")
 
-        # Return error status instead of raising
-        return {'status': 'processing_error', 'file_name': file_name, 'error': str(e)}
+            return {
+                'status': 'critical_error',
+                'file_name': file_name,
+                'error': str(e),
+                'framework_error': str(framework_error)
+            }
     finally:
         if os.path.exists(lock_file):
             os.remove(lock_file)

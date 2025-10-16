@@ -179,7 +179,94 @@ def setup_database():
                     source_file_name TEXT NOT NULL,
                     confidence_score REAL DEFAULT 0.5,
                     created_at TEXT NOT NULL,
+                    updated_at TEXT,
                     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+                )
+            """)
+
+            # Tabella per il tracciamento dello stato di processamento documenti
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS document_processing_status (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_name TEXT NOT NULL,
+                    processing_state TEXT NOT NULL CHECK (processing_state IN (
+                        'PENDING', 'QUEUED', 'PROCESSING', 'FAILED_PARSING',
+                        'FAILED_EXTRACTION_API', 'FAILED_EXTRACTION_FORMAT',
+                        'FAILED_INDEXING', 'FAILED_ARCHIVING', 'COMPLETED',
+                        'MANUAL_INTERVENTION_REQUIRED'
+                    )),
+                    current_phase TEXT NOT NULL DEFAULT 'phase_1',
+                    phase_started_at TEXT,
+                    phase_completed_at TEXT,
+                    error_message TEXT,
+                    error_details TEXT, -- JSON con dettagli tecnici dell'errore
+                    retry_count INTEGER DEFAULT 0,
+                    max_retries INTEGER DEFAULT 3,
+                    celery_task_id TEXT,
+                    worker_node TEXT,
+                    processing_metadata TEXT, -- JSON con metadati del processamento
+                    quarantine_path TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(file_name)
+                )
+            """)
+
+            # Tabella per il log strutturato degli errori
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS processing_error_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_name TEXT NOT NULL,
+                    processing_state TEXT NOT NULL,
+                    error_category TEXT NOT NULL, -- 'IOError', 'ConnectionError', 'APIError', 'FormatError', 'IndexingError', 'ArchivingError'
+                    error_type TEXT NOT NULL, -- 'critical', 'error', 'warning', 'info'
+                    error_message TEXT NOT NULL,
+                    error_details TEXT, -- JSON con stack trace e contesto
+                    celery_task_id TEXT,
+                    worker_node TEXT,
+                    resolution_status TEXT DEFAULT 'open' CHECK (resolution_status IN ('open', 'investigating', 'resolved', 'ignored')),
+                    resolution_notes TEXT,
+                    created_at TEXT NOT NULL,
+                    resolved_at TEXT,
+                    FOREIGN KEY (file_name) REFERENCES document_processing_status(file_name) ON DELETE CASCADE
+                )
+            """)
+
+            # Tabella per le metriche di processamento
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS processing_metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date_period TEXT NOT NULL, -- 'YYYY-MM-DD' o 'YYYY-MM-DD HH' per aggregazione oraria
+                    total_files INTEGER DEFAULT 0,
+                    files_pending INTEGER DEFAULT 0,
+                    files_processing INTEGER DEFAULT 0,
+                    files_completed INTEGER DEFAULT 0,
+                    files_failed INTEGER DEFAULT 0,
+                    avg_processing_time REAL, -- secondi
+                    error_rate REAL, -- percentuale
+                    quarantine_count INTEGER DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(date_period)
+                )
+            """)
+
+            # Tabella per i file in quarantena
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS quarantine_files (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_name TEXT NOT NULL,
+                    original_path TEXT NOT NULL,
+                    quarantine_path TEXT NOT NULL,
+                    failure_reason TEXT NOT NULL,
+                    failure_category TEXT NOT NULL,
+                    error_details TEXT, -- JSON dettagliato
+                    retry_eligible INTEGER DEFAULT 1, -- 1=può essere ritentato, 0=no
+                    manual_review_required INTEGER DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    reviewed_at TEXT,
+                    review_notes TEXT,
+                    review_decision TEXT CHECK (review_decision IN ('retry', 'delete', 'manual_fix', 'ignore')),
+                    UNIQUE(file_name)
                 )
             """)
 
