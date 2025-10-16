@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 🚀 Script di Deployment Production - Archivista AI v3.0
+# 🚀 Script di Deployment Production - Archivista AI v2.5.0
 # Automatizza il deployment del sistema ottimizzato per documenti pesanti
 
 set -e  # Exit on any error
@@ -278,8 +278,8 @@ show_monitoring_info() {
 # === MAIN SCRIPT ===
 
 main() {
-    echo "🚀 Deployment Production - Archivista AI v3.0"
-    echo "=============================================="
+    echo "🚀 Deployment Production - Archivista AI v2.5.0"
+    echo "================================================"
     echo
 
     # Verifica prerequisiti

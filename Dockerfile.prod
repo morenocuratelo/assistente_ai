@@ -90,8 +90,8 @@ EXPOSE 8501
 CMD ["/app/init.sh", "streamlit", "run", "main_new_architecture.py", "--server.port", "8501", "--server.address", "0.0.0.0", "--server.headless", "true"]
 
 # === LABELS PER METADATI ===
-LABEL version="3.0"
-LABEL description="Archivista AI - Sistema di processamento documenti con diagnosi errori avanzata"
+LABEL version="2.5.0"
+LABEL description="Archivista AI v2.5.0 - Sistema di processamento documenti con diagnosi errori avanzata"
 LABEL maintainer="Archivista AI Team"
 LABEL stage="production"
 

@@ -1,8 +1,8 @@
-# 🚀 Production Deployment - Archivista AI v3.0
+# 🚀 Production Deployment - Archivista AI v2.5.0
 
 ## Guida Completa per Deployment in Produzione
 
-Questa guida fornisce tutto il necessario per deployare Archivista AI v3.0 in ambiente di produzione, ottimizzato per il processamento di molti documenti pesanti in modalità single-user.
+Questa guida fornisce tutto il necessario per deployare Archivista AI v2.5.0 in ambiente di produzione, ottimizzato per il processamento di molti documenti pesanti in modalità single-user.
 
 ## 📋 Sommario
 

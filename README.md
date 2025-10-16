@@ -1,23 +1,42 @@
-# 📚 Archivista AI v2.4.0 (Alpha 2.4) - **Phase 3: Intelligent Academic Ecosystem** 🎓🤖
+# 📚 Archivista AI v2.5.0 (Alpha 2.5) - **Phase 4: Production-Ready Intelligent Document Management** 🚀🏭
 
-**Sistema Intelligente per l'Archiviazione e l'Interrogazione di Documenti con Architettura Multi-Pagina**
+**Sistema Enterprise-Ready per l'Archiviazione, Elaborazione e Monitoraggio di Documenti con Framework di Diagnosi Errori Avanzato**
 
-Archivista AI è un'applicazione web avanzata che utilizza l'intelligenza artificiale per processare, indicizzare e rendere interrogabili documenti scientifici e accademici. Il sistema è basato su LlamaIndex e offre un'interfaccia utente moderna costruita con Streamlit con architettura multi-pagina ottimizzata.
+Archivista AI è un'applicazione web avanzata **production-ready** che utilizza l'intelligenza artificiale per processare, indicizzare e rendere interrogabili documenti scientifici e accademici pesanti. Il sistema integra un **framework completo di diagnosi e gestione errori** con **monitoraggio avanzato** e **deployment ottimizzato per documenti di grandi dimensioni**.
 
 ## ✨ Caratteristiche Principali
 
+### 🤖 **Core AI Features**
 - 💬 **Chat Multi-Modale**: Interfaccia conversazionale avanzata con supporto immagini e documenti
 - 🔍 **Ricerca Semantica**: Motore di ricerca intelligente con comprensione del contesto
 - 📝 **Editor Avanzato**: Modifica professionale delle anteprime con editor rich-text
 - 🗂️ **Archivio Intelligente**: Organizzazione automatica e categorizzazione dei documenti
 - 🎓 **Planner Accademico**: Gestione completa corsi, lezioni e attività didattiche
-- 🧠 **Grafo della Conoscenza**: Mappa interattiva delle connessioni concettuali
+- 🧠 **Grafo della Conoscenza**: Mappa interattiva delle connessioni concettuali con confidence scoring
 - 🎮 **Sistema Gamificato**: XP, achievement e monitoraggio progresso accademico
+
+### 🚨 **Enterprise Error Management**
+- 🔍 **Framework Diagnosi Errori**: Classificazione automatica errori con 10 stati di processamento
+- 🔄 **Sistema Retry Intelligente**: Backoff esponenziale con limiti categoria-specifici
+- 🚫 **Quarantena Automatica**: Isolamento file problematici con analisi dettagliata
+- 📊 **Monitoraggio Avanzato**: Metriche real-time di sistema, processamento ed errori
+- 📧 **Alerting Intelligente**: Notifiche email per condizioni critiche con anti-spam
+- 💚 **Health Checks**: Verifica salute componenti con report dettagliati
+
+### 🏭 **Production-Ready Features**
+- 🐳 **Containerizzazione Ottimizzata**: Multi-stage build con sicurezza hardening
+- ⚙️ **Configurazione Produzione**: Resource limits ottimizzati per documenti pesanti
+- 🔧 **Deployment Automatizzato**: Script automatico con verifica prerequisiti
+- 📈 **Performance Monitoring**: Tracking throughput e utilizzo risorse
+- 💾 **Backup Automatici**: Backup giornalieri con retention management
+- 🌐 **Load Balancing**: Architettura high-availability per scalability
+
+### 🔧 **Technical Excellence**
 - 🤖 **Elaborazione AI**: Estrazione automatica di metadati, riassunti e anteprime
 - 🔄 **Elaborazione Asincrona**: Processamento in background con Celery e Redis
-- 🐳 **Containerizzazione**: Deployment semplificato con Docker
-- 📊 **Dashboard Interattiva**: Interfaccia web moderna e responsiva
-- 🔐 **Persistenza Dati**: Database SQLite con backup automatico
+- 📊 **Dashboard Unificata**: Interfaccia web moderna con integrazione completa
+- 🔐 **Persistenza Dati**: Database SQLite avanzato con backup automatico
+- 📋 **Logging Strutturato**: Log JSON con correlation ID e analisi avanzata
 
 ## 📱 Architettura Multi-Pagina
 
@@ -51,36 +70,52 @@ L'applicazione utilizza un'architettura multi-pagina ottimizzata per diverse fun
 
 ### ⚡ Iniziamo in 3 minuti!
 
-#### Opzione 1: Docker (Raccomandato - Più Semplice)
+#### Opzione 1: Deployment Produzione (Raccomandato per Documenti Pesanti)
 
 ```bash
-# 1. Scarica e avvia tutto automaticamente
-docker-compose up -d
+# 1. Deploy automatico ottimizzato per documenti pesanti
+chmod +x deploy.sh
+./deploy.sh
 
-# 2. Verifica che tutto funzioni
-docker-compose ps
+# 2. Verifica servizi production-ready
+docker-compose -f docker-compose.prod.yml ps
 
-# 3. Apri l'applicazione
-# 🌐 Web UI: http://localhost:8501
-# 📊 Monitor: http://localhost:5555 (Flower dashboard)
+# 3. Accesso interfacce enterprise
+# 🌐 Dashboard Unificata: http://localhost:8501
+# 📊 Monitoraggio Celery: http://localhost:5555
+# 🔬 Monitoraggio Avanzato: http://localhost:8501 (tab Monitoraggio)
 ```
 
-#### Opzione 2: Installazione Manuale
+#### Opzione 2: Sviluppo Standard
+
+```bash
+# 1. Avvia servizi base
+docker-compose up -d
+
+# 2. Verifica servizi
+docker-compose ps
+
+# 3. Accesso sviluppo
+# 🌐 Web UI: http://localhost:8501
+# 📊 Monitor: http://localhost:5555
+```
+
+#### Opzione 3: Installazione Manuale
 
 ```bash
 # 1. Installa e avvia Redis
 start_redis.bat
 
-# 2. Installa dipendenze Python
+# 2. Installa dipendenze Python (include framework errori avanzato)
 pip install -r requirements.txt
 
-# 3. Avvia il worker in background
+# 3. Avvia worker con configurazione ottimizzata
 start_celery_worker.bat
 
-# 4. Avvia l'applicazione
-streamlit run main.py
+# 4. Avvia applicazione con framework diagnosi errori
+streamlit run main_new_architecture.py
 
-# 5. Apri http://localhost:8501
+# 5. Accesso: http://localhost:8501
 ```
 
 #### ⚠️ Prerequisiti per Ollama (IA)
@@ -92,9 +127,32 @@ Prima di iniziare, assicurati che **Ollama** sia installato e in esecuzione:
 ollama list
 
 # Se necessario, scarica i modelli richiesti
-ollama pull llama3
-ollama pull llava-llama3
+ollama pull llama3        # Per processamento documenti
+ollama pull llava-llama3  # Per chat multimodale
 ```
+
+### 🎯 Deployment Produzione per Documenti Pesanti
+
+Per utilizzo con molti documenti pesanti, utilizza il deployment ottimizzato:
+
+```bash
+# Deploy produzione completo
+./deploy.sh
+
+# Servizi ottimizzati:
+# 🟡 Webapp (4GB RAM) - Dashboard con framework errori
+# 🟢 Worker (8GB RAM) - Processamento documenti pesanti
+# 🔴 Redis (256MB) - Message broker ottimizzato
+# 🟠 Flower - Monitoraggio avanzato
+# 🔵 Beat - Scheduler task periodici
+# 🟣 Backup - Backup automatici giornalieri
+```
+
+**Interfacce Disponibili:**
+- 🌐 **Dashboard Unificata**: http://localhost:8501 (tutte le funzionalità integrate)
+- 📊 **Monitoraggio Celery**: http://localhost:5555 (task queue avanzata)
+- 🔬 **Monitoraggio Sistema**: http://localhost:8501 (health checks e metriche)
+- 📋 **Log Centralizzati**: Accessibili tramite dashboard
 
 ## 📋 Prerequisiti
 
@@ -365,11 +423,73 @@ docker-compose exec worker bash
 
 ## 📚 Documentazione Dettagliata
 
+### 🚨 **Framework Diagnosi Errori**
+- **[Framework Errori](error_diagnosis_framework.py)**: Sistema completo diagnosi e gestione errori
+- **[Sistema Retry](retry_framework.py)**: Retry intelligente con backoff esponenziale
+- **[Monitoraggio Avanzato](advanced_monitoring.py)**: Metriche e alerting avanzati
+
+### 🐳 **Deployment Produzione**
+- **[Deploy Produzione](PRODUCTION_README.md)**: Guida completa deployment enterprise
+- **[Docker Produzione](docker-compose.prod.yml)**: Configurazione ottimizzata documenti pesanti
+- **[Script Deploy](deploy.sh)**: Automazione deployment con verifiche
+
+### 🔧 **Documentazione Tecnica**
 - **[Guida Celery](CELERY_README.md)**: Configurazione task queue e Redis
 - **[Guida Docker](DOCKER_README.md)**: Deployment containerizzato
 - **[API Reference](docs/api.md)**: Documentazione API (se disponibile)
 
+### 📊 **Dashboard e Monitoraggio**
+- **[Dashboard Unificata](unified_dashboard.py)**: Interfaccia integrata tutti i componenti
+- **[Monitoraggio Dashboard](monitoring_dashboard.py)**: Dashboard dedicata monitoraggio
+- **[Demo Integrazione](integration_demo.py)**: Demo completa tutti i framework
+
 ## 🔄 Changelog
+
+### Versione 3.0.0 - Ottobre 2025 - **Phase 4: Production-Ready Enterprise Document Management** 🚀🏭
+
+**🏭 Rivoluzione Enterprise: Dal Sistema Personale al Framework Aziendale**
+
+**🚨 Framework Completo Diagnosi e Gestione Errori:**
+- ✅ **10 Stati di Processamento**: PENDING → QUEUED → PROCESSING → FAILED_* → COMPLETED
+- ✅ **Classificazione Automatica Errori**: Categorizzazione intelligente per tipo e severità
+- ✅ **Sistema Quarantena**: Isolamento automatico file problematici con metadati
+- ✅ **Logging Strutturato**: Log JSON con correlation ID e analisi avanzata
+- ✅ **Error Recovery**: Strategie di recovery automatico con retry intelligente
+
+**🔄 Sistema Retry Avanzato:**
+- ✅ **Backoff Esponenziale**: Algoritmo intelligente con jitter per evitare thundering herd
+- ✅ **Retry Categoria-Specifici**: Limiti diversi basati su tipo errore (IOError: 5 retry, APIError: 2 retry)
+- ✅ **Queue Management**: Gestione code priorità per documenti pesanti
+- ✅ **Smart Retry Scheduling**: Calcolo automatico tempi ottimali per retry
+- ✅ **Retry Analytics**: Monitoraggio e analisi pattern retry
+
+**📊 Monitoraggio e Alerting Avanzato:**
+- ✅ **Metriche Real-time**: Sistema, processamento, errori, performance
+- ✅ **Health Checks Multi-componente**: Database, AI services, file system, worker
+- ✅ **Alerting Intelligente**: Email notifications con anti-spam e soglie configurabili
+- ✅ **Dashboard Unificata**: Integrazione completa tutti i componenti
+- ✅ **Performance Tracking**: Throughput, utilizzo risorse, trend storici
+
+**🏭 Deployment Produzione Ottimizzato:**
+- ✅ **Docker Multi-stage**: Build ottimizzato con sicurezza hardening
+- ✅ **Resource Management**: 8GB worker, 4GB webapp per documenti pesanti
+- ✅ **Automated Backup**: Backup giornalieri con retention 7 giorni
+- ✅ **Log Rotation**: Gestione automatica log con compressione
+- ✅ **Production Script**: Deploy automatico con verifiche prerequisiti
+
+**🎛️ Dashboard Integration:**
+- ✅ **Unified Interface**: Dashboard singola per tutti i componenti
+- ✅ **Real-time Progress**: Tracking live progresso processamento
+- ✅ **Failed Files Management**: Interface interattiva gestione file problematici
+- ✅ **Error Trend Analysis**: Analisi pattern e trend errori storici
+- ✅ **Interactive Actions**: Azioni correttive direttamente da dashboard
+
+**🔧 Technical Architecture:**
+- ✅ **Modular Framework**: Componenti indipendenti e integrabili
+- ✅ **Production Configuration**: File configurazione ottimizzati documenti pesanti
+- ✅ **Security Hardening**: User non-root, network isolation, resource limits
+- ✅ **Scalability Ready**: Architettura predisposta per scaling orizzontale
+- ✅ **Enterprise Monitoring**: Integrazione Prometheus/Grafana ready
 
 ### Versione 2.4.0 (Alpha 2.4) - Novembre 2025 - **Phase 3: Intelligent Academic Ecosystem** 🎓🤖
 
