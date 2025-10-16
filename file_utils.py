@@ -524,15 +524,29 @@ def get_archive_tree():
                     # Determine if this is a part (P1-P5) or chapter (C01-C27)
                     if part.startswith('P') and len(part) > 10:  # Part identifier
                         # Find matching part in knowledge structure
-                        for part_key, part_data in KNOWLEDGE_BASE_STRUCTURE.items():
-                            if part_key == part:
-                                current_node[part] = {
-                                    "name": part_data["name"],
-                                    "path": part,
-                                    "type": "part",
-                                    "children": {}
-                                }
-                                break
+                        if part in KNOWLEDGE_BASE_STRUCTURE:
+                            part_data = KNOWLEDGE_BASE_STRUCTURE[part]
+                            current_node[part] = {
+                                "name": part_data["name"],
+                                "path": part,
+                                "type": "part",
+                                "children": {}
+                            }
+                        else:
+                            # Handle unknown parts gracefully
+                            current_node[part] = {
+                                "name": f"Parte {part}",
+                                "path": part,
+                                "type": "part",
+                                "children": {}
+                            }
+                    elif part == "UNCATEGORIZED":  # Special case for uncategorized content
+                        current_node[part] = {
+                            "name": "Contenuto Non Categorizzato",
+                            "path": part,
+                            "type": "part",
+                            "children": {}
+                        }
                     else:  # Chapter identifier
                         # Find the parent part and chapter info
                         if path_parts and path_parts[0] in KNOWLEDGE_BASE_STRUCTURE:
@@ -545,6 +559,24 @@ def get_archive_tree():
                                     "files": [],
                                     "subdirectories": {}
                                 }
+                            else:
+                                # Handle unknown chapters gracefully
+                                current_node[part] = {
+                                    "name": f"Capitolo {part}",
+                                    "path": f"{path_parts[0]}/{part}",
+                                    "type": "chapter",
+                                    "files": [],
+                                    "subdirectories": {}
+                                }
+                        else:
+                            # Handle cases where parent part is not in knowledge structure
+                            current_node[part] = {
+                                "name": f"Capitolo {part}",
+                                "path": f"{path_parts[0]}/{part}" if path_parts else part,
+                                "type": "chapter",
+                                "files": [],
+                                "subdirectories": {}
+                            }
 
                 current_node = current_node[part]
                 if current_node["type"] in ["part", "chapter"]:
@@ -564,6 +596,26 @@ def get_archive_tree():
                 # Get metadata from database
                 paper_metadata = papers_dict.get(file_name, {})
 
+                # Handle both sqlite3.Row objects and dictionaries
+                if hasattr(paper_metadata, 'get'):
+                    # It's already a dictionary-like object
+                    title = paper_metadata.get('title', file_name)
+                    authors = paper_metadata.get('authors', '')
+                    publication_year = paper_metadata.get('publication_year')
+                    category_id = paper_metadata.get('category_id', '')
+                    category_name = paper_metadata.get('category_name', '')
+                    formatted_preview = paper_metadata.get('formatted_preview', '')
+                    processed_at = paper_metadata.get('processed_at', '')
+                else:
+                    # It's a sqlite3.Row object, convert to dict or access directly
+                    title = getattr(paper_metadata, 'title', file_name)
+                    authors = getattr(paper_metadata, 'authors', '')
+                    publication_year = getattr(paper_metadata, 'publication_year', None)
+                    category_id = getattr(paper_metadata, 'category_id', '')
+                    category_name = getattr(paper_metadata, 'category_name', '')
+                    formatted_preview = getattr(paper_metadata, 'formatted_preview', '')
+                    processed_at = getattr(paper_metadata, 'processed_at', '')
+
                 # Create file object
                 file_obj = {
                     "name": file_name,
@@ -573,13 +625,13 @@ def get_archive_tree():
                     "modified_time": file_mtime,
                     "extension": os.path.splitext(file_name)[1].lower(),
                     # Database metadata
-                    "title": paper_metadata.get('title', file_name),
-                    "authors": paper_metadata.get('authors', ''),
-                    "publication_year": paper_metadata.get('publication_year'),
-                    "category_id": paper_metadata.get('category_id', ''),
-                    "category_name": paper_metadata.get('category_name', ''),
-                    "formatted_preview": paper_metadata.get('formatted_preview', ''),
-                    "processed_at": paper_metadata.get('processed_at', ''),
+                    "title": title,
+                    "authors": authors,
+                    "publication_year": publication_year,
+                    "category_id": category_id,
+                    "category_name": category_name,
+                    "formatted_preview": formatted_preview,
+                    "processed_at": processed_at,
                     # Processing status
                     "status": "indexed" if paper_metadata else "unindexed"
                 }

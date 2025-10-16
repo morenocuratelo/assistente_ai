@@ -3,14 +3,11 @@ import pandas as pd
 import json
 import networkx as nx
 from streamlit.components.v1 import html
-from file_utils import get_user_knowledge_graph, get_entity_neighbors
+from file_utils import get_user_knowledge_graph, get_entity_neighbors, get_entities_by_confidence, get_relationships_by_confidence, get_confidence_statistics
 # Import delle funzioni Bayesian per la visualizzazione della confidenza
 from knowledge_structure import (
     get_confidence_color,
-    get_confidence_label,
-    get_entities_by_confidence,
-    get_relationships_by_confidence,
-    get_confidence_statistics
+    get_confidence_label
 )
 from bayesian_inference_engine import create_inference_engine
 
@@ -115,6 +112,7 @@ entity_types = ["All"] + sorted(list(set([e['entity_type'] for e in graph_data['
 selected_entity_type = st.sidebar.selectbox("Tipo Entità", entity_types)
 
 # Selected entity for neighborhood view
+selected_entity = "Nessuna selezione (grafo completo)"  # Default value
 if graph_data['entities']:
     entity_options = ["Nessuna selezione (grafo completo)"] + sorted([e['entity_name'] for e in graph_data['entities']])
     selected_entity = st.sidebar.selectbox("Entità Focalizzata", entity_options)

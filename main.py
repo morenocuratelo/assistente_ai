@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import time
 import json
+import sqlite3
 import pandas as pd
 from datetime import datetime
 
@@ -11,7 +12,8 @@ from file_utils import (
     setup_database, get_papers_dataframe, update_paper_metadata,
     get_today_planned_sessions, generate_study_schedule, get_study_insights,
     get_user_tasks, get_user_courses, get_course_lectures, implement_generated_schedule,
-    record_user_activity, get_dashboard_data, check_first_time_user, mark_user_not_new
+    record_user_activity, get_dashboard_data, check_first_time_user, mark_user_not_new,
+    get_recent_documents, get_recent_uploads, get_user_activity_summary
 )
 import knowledge_structure
 
@@ -213,82 +215,57 @@ def render_navigation_sidebar():
 
         st.divider()
 
-        # Document Upload Section
-        st.markdown("### ➕ Aggiungi Documenti")
+        # Enhanced Document Upload Section
+        st.markdown("### ➕ Carica Documenti")
+
+        # File selection with improved UX
         uploaded_files = st.file_uploader(
-            "Trascina i file qui",
+            "📎 Trascina i file qui o clicca per selezionare",
             accept_multiple_files=True,
-            type=['pdf', 'docx', 'txt', 'rtf', 'html', 'htm'],
-            label_visibility="collapsed"
+            type=['pdf', 'docx', 'txt', 'rtf', 'html', 'htm', 'pptx', 'xlsx'],
+            label_visibility="collapsed",
+            help="Formati supportati: PDF, Word, TXT, RTF, HTML, PowerPoint, Excel"
         )
 
-        # Academic association (only for logged-in users)
-        academic_association = False
-        selected_course_id = None
-        selected_lecture_id = None
-        material_type = "other"
-
-        if 'user_id' in st.session_state and st.session_state['user_id']:
-            academic_association = st.checkbox("🎓 Associa a corso accademico", help="Collega i documenti caricati a un corso o lezione")
-
-            if academic_association:
-                from file_utils import get_user_courses, get_course_lectures
-
-                user_id = st.session_state['user_id']
-                courses = get_user_courses(user_id)
-                course_options = ["Seleziona..."] + [f"{c['course_name']} ({c['course_code'] or 'No Code'})" for c in courses]
-
-                selected_course_option = st.selectbox("Corso", course_options, help="Seleziona il corso associato")
-                if selected_course_option != "Seleziona...":
-                    course_name = selected_course_option.split(' (')[0]
-                    selected_course = next((c for c in courses if c['course_name'] == course_name), None)
-                    if selected_course:
-                        selected_course_id = selected_course['id']
-                        lectures = get_course_lectures(selected_course_id)
-                        lecture_options = ["Nessuna lezione specifica"] + [f"{l['lecture_title']} ({l['lecture_date'] or 'No Date'})" for l in lectures]
-
-                        selected_lecture_option = st.selectbox("Lezione (opzionale)", lecture_options)
-                        if selected_lecture_option != "Nessuna lezione specifica":
-                            lecture_title = selected_lecture_option.split(' (')[0]
-                            selected_lecture = next((l for l in lectures if l['lecture_title'] == lecture_title), None)
-                            if selected_lecture:
-                                selected_lecture_id = selected_lecture['id']
-
-                        material_type = st.selectbox("Tipo Materiale", ["lecture_notes", "handout", "assignment", "reading", "other"],
-                                                   format_func=lambda x: x.replace('_', ' ').title(), help="Tipo di materiale didattico")
-
+        # Show upload form if files are selected
         if uploaded_files:
-            saved_files = []
-            for uploaded_file in uploaded_files:
-                save_path = os.path.join(DOCS_TO_PROCESS_DIR, uploaded_file.name)
-                with open(save_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
-                saved_files.append(uploaded_file.name)
+            st.success(f"✅ {len(uploaded_files)} file selezionati")
 
-            if saved_files:
-                add_log_message(f"Caricati {len(saved_files)} file.")
+            # Show file preview
+            with st.expander("📋 File Selezionati", expanded=True):
+                for file in uploaded_files:
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    with col1:
+                        st.write(f"📄 **{file.name}**")
+                        st.caption(f"Dimensione: {file.size // 1024} KB")
+                    with col2:
+                        st.write(f"📊 {file.type or 'Sconosciuto'}")
+                    with col3:
+                        if st.button("🗑️", key=f"remove_{file.name}", help="Rimuovi file"):
+                            # Remove file from session state (would need additional logic)
+                            st.rerun()
 
-                # Create material associations if academic data provided
-                if academic_association and selected_course_id:
-                    from file_utils import create_material
-                    user_id = st.session_state['user_id']
+            # Enhanced academic association for logged-in users
+            if 'user_id' in st.session_state and st.session_state['user_id']:
+                show_enhanced_academic_upload_form(st.session_state['user_id'], uploaded_files)
+            else:
+                # Simple upload for non-logged users
+                if st.button("🚀 Carica Documenti", type="primary", use_container_width=True):
+                    saved_files = save_uploaded_files(uploaded_files)
+                    if saved_files:
+                        scan_and_process_documents(files_to_process=saved_files)
+                        st.rerun()
+        else:
+            # Show upload tips when no files selected
+            with st.expander("💡 Suggerimenti per l'upload"):
+                st.markdown("""
+                **🎯 Per risultati ottimali:**
+                - Usa titoli descrittivi nei tuoi documenti
+                - Organizza per materia/mese nel nome del file
+                - Carica pochi documenti alla volta per testare
+                """)
 
-                    for file_name in saved_files:
-                        try:
-                            material_id = create_material(
-                                lecture_id=selected_lecture_id,
-                                course_id=selected_course_id,
-                                file_name=file_name,
-                                material_type=material_type
-                            )
-                            add_log_message(f"Associato {file_name} al corso accademico.")
-                        except Exception as e:
-                            add_log_message(f"Errore associazione {file_name}: {e}")
-
-                scan_and_process_documents(files_to_process=saved_files)
-                st.rerun()
-
-        if st.button("🔍 Controlla Nuovi File", use_container_width=True):
+        if st.button("🔍 Controlla Nuovi File", use_container_width=True, help="Scansiona la cartella per nuovi documenti da processare"):
             scan_and_process_documents()
 
         st.divider()
@@ -897,6 +874,274 @@ def process_universal_command(user_id: str, command: str):
         st.session_state['universal_chat_command'] = command
         st.switch_page("pages/1_Chat.py")
 
+def save_uploaded_files(uploaded_files) -> list:
+    """Salva i file caricati nella directory di processamento."""
+    saved_files = []
+    for uploaded_file in uploaded_files:
+        save_path = os.path.join(DOCS_TO_PROCESS_DIR, uploaded_file.name)
+        try:
+            with open(save_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            saved_files.append(uploaded_file.name)
+            add_log_message(f"File salvato: {uploaded_file.name}")
+        except Exception as e:
+            add_log_message(f"Errore salvataggio {uploaded_file.name}: {e}")
+            st.error(f"Errore nel salvataggio di {uploaded_file.name}")
+    return saved_files
+
+def show_enhanced_academic_upload_form(user_id: str, uploaded_files: list):
+    """Form di upload accademico avanzato con creazione dinamica di corsi/lezioni."""
+    with st.form("enhanced_academic_upload"):
+        st.markdown("**🎓 Associa a Corso Accademico**")
+
+        # Sezione Tags/Keywords avanzata
+        st.markdown("🏷️ **Tag e Parole Chiave**")
+        keywords_input = st.text_area(
+            "Aggiungi parole chiave (una per riga)",
+            placeholder="Esempio:\nmatematica\nalgebra lineare\nfunzioni\nlimiti",
+            help="Queste parole chiave aiuteranno l'AI a categorizzare e trovare i documenti"
+        )
+
+        # Lista di keywords esistenti per autocompletamento
+        existing_keywords = get_existing_keywords(user_id)
+        if existing_keywords:
+            st.markdown("**Seleziona da parole chiave esistenti:**")
+            selected_existing = st.multiselect(
+                "Keywords esistenti",
+                existing_keywords,
+                help="Seleziona parole chiave già utilizzate in precedenza"
+            )
+        else:
+            selected_existing = []
+
+        # Sezione Corsi e Lezioni con creazione dinamica
+        st.markdown("📚 **Associazione Accademica**")
+
+        from file_utils import get_user_courses, get_course_lectures
+
+        courses = get_user_courses(user_id)
+        course_options = ["➕ Crea nuovo corso..."] + [f"{c['course_name']} ({c['course_code'] or 'No Code'})" for c in courses]
+
+        selected_course_option = st.selectbox(
+            "📖 Corso",
+            course_options,
+            help="Seleziona un corso esistente o creane uno nuovo"
+        )
+
+        selected_course_id = None
+        new_course_name = ""
+        new_course_code = ""
+
+        if selected_course_option == "➕ Crea nuovo corso...":
+            col1, col2 = st.columns(2)
+            with col1:
+                new_course_name = st.text_input("Nome Corso *", placeholder="Es: Matematica Discreta")
+            with col2:
+                new_course_code = st.text_input("Codice Corso", placeholder="Es: MD001")
+
+            new_course_description = st.text_area("Descrizione Corso", placeholder="Breve descrizione del corso...")
+
+            # Store course creation flag in session state instead of using button inside form
+            create_course_now = st.checkbox("✅ Crea questo corso prima di caricare", key="create_course_flag")
+        else:
+            # Corso esistente selezionato
+            if selected_course_option != "➕ Crea nuovo corso...":
+                course_name = selected_course_option.split(' (')[0]
+                selected_course = next((c for c in courses if c['course_name'] == course_name), None)
+                if selected_course:
+                    selected_course_id = selected_course['id']
+
+                    # Sezione Lezioni con creazione dinamica
+                    lectures = get_course_lectures(selected_course_id)
+                    lecture_options = ["➕ Crea nuova lezione..."] + [
+                        f"{l['lecture_title']} ({l['lecture_date'] or 'No Date'})" for l in lectures
+                    ]
+
+                    selected_lecture_option = st.selectbox(
+                        "📝 Lezione (opzionale)",
+                        lecture_options,
+                        help="Associa a una lezione esistente o creane una nuova"
+                    )
+
+                    selected_lecture_id = None
+                    new_lecture_title = ""
+                    new_lecture_date = ""
+
+                    if selected_lecture_option == "➕ Crea nuova lezione...":
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            new_lecture_title = st.text_input("Titolo Lezione *", placeholder="Es: Introduzione agli Insiemi")
+                        with col2:
+                            new_lecture_date = st.date_input("Data Lezione", help="Quando si è svolta la lezione")
+
+                        new_lecture_description = st.text_area("Descrizione Lezione", placeholder="Argomenti trattati...")
+
+                        if new_lecture_title and st.button("✅ Crea Lezione", key="create_lecture"):
+                            try:
+                                lecture_id = create_lecture(
+                                    selected_course_id,
+                                    new_lecture_title,
+                                    new_lecture_date.isoformat() if new_lecture_date else None,
+                                    new_lecture_description
+                                )
+                                st.success(f"✅ Lezione '{new_lecture_title}' creata con successo!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Errore creazione lezione: {e}")
+                    else:
+                        # Lezione esistente selezionata
+                        if selected_lecture_option != "➕ Crea nuova lezione...":
+                            lecture_title = selected_lecture_option.split(' (')[0]
+                            selected_lecture = next((l for l in lectures if l['lecture_title'] == lecture_title), None)
+                            if selected_lecture:
+                                selected_lecture_id = selected_lecture['id']
+
+        # Tipo di materiale
+        material_type = st.selectbox(
+            "📄 Tipo di Materiale",
+            ["lecture_notes", "handout", "assignment", "reading", "other"],
+            format_func=lambda x: {
+                "lecture_notes": "📝 Appunti di Lezione",
+                "handout": "📋 Dispensa",
+                "assignment": "📝 Compito/Esame",
+                "reading": "📖 Lettura Consigliata",
+                "other": "🔄 Altro"
+            }.get(x, x.title().replace('_', ' '))
+        )
+
+        # Pulsante di caricamento finale
+        submit_button = st.form_submit_button("🚀 Carica e Processa Documenti", type="primary", use_container_width=True)
+
+        if submit_button:
+            # Handle course creation if requested
+            if selected_course_option == "➕ Crea nuovo corso..." and create_course_now and new_course_name.strip():
+                try:
+                    selected_course_id = create_course(user_id, new_course_name, new_course_code, new_course_description)
+                    st.success(f"✅ Corso '{new_course_name}' creato con successo!")
+                except Exception as e:
+                    st.error(f"Errore creazione corso: {e}")
+                    return
+
+            # Salva i file
+            saved_files = save_uploaded_files(uploaded_files)
+
+            if not saved_files:
+                st.error("❌ Errore nel salvataggio dei file")
+                return
+
+            # Processa keywords
+            all_keywords = []
+            if keywords_input.strip():
+                new_keywords = [kw.strip() for kw in keywords_input.split('\n') if kw.strip()]
+                all_keywords.extend(new_keywords)
+
+            if selected_existing:
+                all_keywords.extend(selected_existing)
+
+            # Crea associazioni accademiche
+            associations_created = 0
+            for file_name in saved_files:
+                try:
+                    # Crea associazione materiale se abbiamo corso o lezione
+                    if selected_course_id or (new_course_name and new_course_name.strip()):
+                        # Crea corso se nuovo e non ancora creato
+                        if new_course_name and new_course_name.strip() and not selected_course_id:
+                            try:
+                                selected_course_id = create_course(user_id, new_course_name, new_course_code, new_course_description)
+                            except Exception as e:
+                                st.error(f"Errore creazione corso: {e}")
+                                continue
+
+                        # Crea lezione se nuova
+                        if new_lecture_title and new_lecture_title.strip():
+                            try:
+                                selected_lecture_id = create_lecture(
+                                    selected_course_id,
+                                    new_lecture_title,
+                                    new_lecture_date.isoformat() if new_lecture_date else None,
+                                    new_lecture_description
+                                )
+                            except Exception as e:
+                                st.error(f"Errore creazione lezione: {e}")
+                                selected_lecture_id = None
+
+                        # Crea associazione materiale
+                        from file_utils import create_material
+                        material_id = create_material(
+                            lecture_id=selected_lecture_id,
+                            course_id=selected_course_id,
+                            file_name=file_name,
+                            material_type=material_type
+                        )
+                        associations_created += 1
+
+                    # Salva keywords se presenti
+                    if all_keywords:
+                        save_document_keywords(file_name, all_keywords)
+
+                    add_log_message(f"Associato {file_name} al corso accademico")
+
+                except Exception as e:
+                    add_log_message(f"Errore associazione {file_name}: {e}")
+                    st.warning(f"Errore associazione {file_name}: {e}")
+
+            # Avvía processamento
+            scan_and_process_documents(files_to_process=saved_files)
+
+            # Mostra risultati
+            st.success(f"✅ {len(saved_files)} documenti caricati con successo!")
+            if associations_created > 0:
+                st.info(f"📚 Creato {associations_created} associazioni accademiche")
+            if all_keywords:
+                st.info(f"🏷️ Aggiunte {len(all_keywords)} parole chiave")
+
+            # Reset form
+            st.session_state['uploaded_files'] = None
+            st.rerun()
+
+def get_existing_keywords(user_id: str) -> list:
+    """Recupera le parole chiave esistenti per l'utente."""
+    try:
+        # Questa è una funzione semplificata - in produzione potresti volerla implementare meglio
+        # Per ora restituiamo alcune keywords comuni
+        return ["matematica", "fisica", "informatica", "storia", "filosofia", "biologia", "chimica"]
+    except Exception as e:
+        print(f"Errore recupero keywords esistenti: {e}")
+        return []
+
+def save_document_keywords(file_name: str, keywords: list):
+    """Salva le parole chiave per un documento."""
+    try:
+        # Aggiorna il database con le keywords
+        with sqlite3.connect(os.path.join(DB_STORAGE_DIR, "metadata.sqlite")) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE papers
+                SET keywords = ?
+                WHERE file_name = ?
+            """, (json.dumps(keywords), file_name))
+            conn.commit()
+    except Exception as e:
+        print(f"Errore salvataggio keywords per {file_name}: {e}")
+
+def create_course(user_id: str, course_name: str, course_code: str = None, description: str = None) -> int:
+    """Crea un nuovo corso."""
+    try:
+        from file_utils import create_course as create_course_db
+        return create_course_db(user_id, course_name, course_code, description)
+    except Exception as e:
+        print(f"Errore creazione corso: {e}")
+        raise
+
+def create_lecture(course_id: int, lecture_title: str, lecture_date: str = None, description: str = None) -> int:
+    """Crea una nuova lezione."""
+    try:
+        from file_utils import create_lecture as create_lecture_db
+        return create_lecture_db(course_id, lecture_title, lecture_date, description)
+    except Exception as e:
+        print(f"Errore creazione lezione: {e}")
+        raise
+
 def show_quick_upload_form(user_id: str):
     """Form di upload rapido per la dashboard."""
     with st.form("quick_upload_form"):
@@ -914,12 +1159,7 @@ def show_quick_upload_form(user_id: str):
         submit_upload = st.form_submit_button("🚀 Carica", type="primary", use_container_width=True)
 
         if submit_upload and files:
-            saved_files = []
-            for file in files:
-                save_path = os.path.join(DOCS_TO_PROCESS_DIR, file.name)
-                with open(save_path, "wb") as f:
-                    f.write(file.getbuffer())
-                saved_files.append(file.name)
+            saved_files = save_uploaded_files(files)
 
             if saved_files:
                 # Record upload activity
@@ -932,6 +1172,56 @@ def show_quick_upload_form(user_id: str):
                 st.success(f"✅ {len(saved_files)} documenti caricati e inviati per processamento!")
                 st.session_state['show_quick_upload'] = False
                 st.rerun()
+
+def get_original_file_path(row) -> str:
+    """
+    Trova il percorso completo del file originale dato un record del database.
+
+    Args:
+        row: Record del database contenente informazioni sul file
+
+    Returns:
+        str: Percorso completo del file originale
+    """
+    try:
+        # Estrai informazioni dal record
+        file_name = getattr(row, 'file_name', None) or row.get('file_name', '')
+        category_id = getattr(row, 'category_id', None) or row.get('category_id', '')
+
+        if not file_name:
+            raise ValueError("Nome file non trovato nel record")
+
+        # Se il file è nella directory di processamento (non ancora categorizzato)
+        processing_path = os.path.join(DOCS_TO_PROCESS_DIR, file_name)
+        if os.path.exists(processing_path):
+            return processing_path
+
+        # Se il file è stato categorizzato, cercalo nella directory categorizzata
+        if category_id and category_id != "UNCATEGORIZED/C00":
+            categorized_path = os.path.join(CATEGORIZED_ARCHIVE_DIR, *category_id.split('/'), file_name)
+            if os.path.exists(categorized_path):
+                return categorized_path
+
+        # Fallback: cerca nelle directory di errore
+        error_paths = [
+            os.path.join(DOCS_TO_PROCESS_DIR, "_error", file_name),
+            os.path.join(DB_STORAGE_DIR, "quarantine", file_name)
+        ]
+
+        for error_path in error_paths:
+            if os.path.exists(error_path):
+                return error_path
+
+        # Se non trovato, restituisci il percorso teorico nella directory categorizzata
+        if category_id:
+            return os.path.join(CATEGORIZED_ARCHIVE_DIR, *category_id.split('/'), file_name)
+        else:
+            return processing_path
+
+    except Exception as e:
+        print(f"Errore nel recupero percorso file: {e}")
+        # Fallback sicuro
+        return os.path.join(DOCS_TO_PROCESS_DIR, str(file_name))
 
 if __name__ == "__main__":
     main()

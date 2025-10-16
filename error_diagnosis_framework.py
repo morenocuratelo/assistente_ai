@@ -76,8 +76,8 @@ class ProcessingMetadata:
     file_name: str
     file_size: int
     file_extension: str
-    processing_state: ProcessingState
-    current_phase: ProcessingPhase
+    processing_state: str  # Cambiato da ProcessingState a str per compatibilità JSON
+    current_phase: str     # Cambiato da ProcessingPhase a str per compatibilità JSON
     celery_task_id: Optional[str] = None
     worker_node: Optional[str] = None
     retry_count: int = 0
@@ -208,8 +208,8 @@ class ErrorDiagnosisFramework:
                 file_name=file_name,
                 file_size=file_size,
                 file_extension=file_extension,
-                processing_state=ProcessingState.PENDING,
-                current_phase=ProcessingPhase.PHASE_1
+                processing_state=ProcessingState.PENDING.value,
+                current_phase=ProcessingPhase.PHASE_1.value
             )
 
             # Salva nel database
@@ -221,9 +221,9 @@ class ErrorDiagnosisFramework:
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (
                     file_name,
-                    metadata.processing_state.value,
-                    metadata.current_phase.value,
-                    json.dumps(asdict(metadata)),
+                    metadata.processing_state,
+                    metadata.current_phase,
+                    json.dumps(asdict(metadata), default=str),  # Convert datetime objects to strings
                     metadata.created_at.isoformat(),
                     metadata.updated_at.isoformat()
                 ))
@@ -235,7 +235,8 @@ class ErrorDiagnosisFramework:
         except Exception as e:
             self.logger.error(f"Failed to initialize processing status for {file_name}: {e}",
                             extra={"correlation_id": correlation_id})
-            raise
+            # Always return correlation_id even on failure for proper error tracking
+            return correlation_id
 
     def update_processing_state(self, file_name: str, new_state: ProcessingState,
                               phase: ProcessingPhase = None, error_message: str = None,
@@ -331,8 +332,8 @@ class ErrorDiagnosisFramework:
                         file_name=row['file_name'],
                         file_size=metadata_dict.get('file_size', 0),
                         file_extension=metadata_dict.get('file_extension', ''),
-                        processing_state=ProcessingState(row['processing_state']),
-                        current_phase=ProcessingPhase(row['current_phase']),
+                        processing_state=row['processing_state'],  # Già stringa dal DB
+                        current_phase=row['current_phase'],        # Già stringa dal DB
                         celery_task_id=row['celery_task_id'],
                         worker_node=row['worker_node'],
                         retry_count=row['retry_count'],

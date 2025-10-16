@@ -316,7 +316,7 @@ def process_document_task(self, file_path):
 
     # Inizializza tracciamento processamento
     try:
-        error_framework.initialize_processing_status(file_name, file_path)
+        correlation_id = error_framework.initialize_processing_status(file_name, file_path)
         error_framework.update_processing_state(
             file_name,
             ProcessingState.QUEUED,
@@ -666,7 +666,8 @@ def process_document_task(self, file_path):
         Gestione errori avanzata con framework di diagnosi completo.
         Classifica automaticamente l'errore e determina l'azione appropriata.
         """
-        correlation_id = error_framework.generate_correlation_id()
+        # Usa il correlation_id già esistente dall'inizio della funzione
+        # correlation_id = error_framework.generate_correlation_id()  # Già definito sopra
 
         # Classifica l'errore automaticamente
         try:
