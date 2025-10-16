@@ -97,7 +97,7 @@ def scan_and_process_documents(files_to_process=None):
         from archivista_processing import process_document_task
 
         if files_to_process is None:
-            supported_extensions = ['.pdf', '.docx', '.rtf', '.html', '.htm', '.txt']
+            supported_extensions = ['.pdf', '.docx', '.rtf', '.html', '.htm', '.txt', '.pptx']
             files_to_process = [f for f in os.listdir(DOCS_TO_PROCESS_DIR) if any(f.lower().endswith(ext) for ext in supported_extensions)]
             if not files_to_process:
                 add_log_message("Nessun nuovo documento trovato.")
@@ -195,7 +195,7 @@ def render_navigation_sidebar():
         uploaded_files = st.file_uploader(
             "Trascina i file qui",
             accept_multiple_files=True,
-            type=['pdf', 'docx', 'txt', 'rtf', 'html', 'htm'],
+            type=['pdf', 'docx', 'txt', 'rtf', 'html', 'htm', 'pptx'],
             label_visibility="collapsed"
         )
 
