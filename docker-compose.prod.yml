@@ -1,0 +1,269 @@
+# 🐳 Docker Compose Production - Archivista AI v3.0
+# Configurazione ottimizzata per processamento documenti pesanti (single-user)
+# Enhanced with error diagnosis framework and advanced monitoring
+
+version: '3.8'
+
+services:
+  # 🔴 Redis - Message Broker ottimizzato
+  redis:
+    image: redis:7-alpine
+    container_name: archivista-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - archivista-network
+
+  # 🟡 Webapp - Interfaccia principale con risorse ottimizzate
+  webapp:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: archivista-webapp
+    restart: unless-stopped
+    command: >
+      sh -c "
+        python -c 'from error_diagnosis_framework import setup_database; setup_database()' &&
+        streamlit run main_new_architecture.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+      "
+    ports:
+      - "8501:8501"
+    volumes:
+      # Volumi separati per ottimizzazione performance
+      - documenti_input:/app/documenti_da_processare:ro  # Read-only per sicurezza
+      - documenti_archivio:/app/Dall_Origine_alla_Complessita
+      - database:/app/db_memoria
+      - logs:/app/logs
+      - ./config:/app/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+      - PYTHONPATH=/app
+    deploy:
+      resources:
+        limits:
+          memory: 4G    # Memoria per documenti pesanti
+          cpus: '1.0'
+        reservations:
+          memory: 2G
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - archivista-network
+
+  # 🟢 Worker - Elaborazione documenti con risorse ottimizzate
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: archivista-worker
+    restart: unless-stopped
+    command: >
+      sh -c "
+        python -c 'from error_diagnosis_framework import setup_database; setup_database()' &&
+        celery -A archivista_processing.celery_app worker --loglevel=info --concurrency=2 --pool=solo --max-tasks-per-child=50
+      "
+    volumes:
+      - documenti_input:/app/documenti_da_processare
+      - documenti_archivio:/app/Dall_Origine_alla_Complessita
+      - database:/app/db_memoria
+      - logs:/app/logs
+      - ./config:/app/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - PYTHONPATH=/app
+      - CELERY_WORKER_PREFETCH_MULTIPLIER=1
+      - CELERY_TASK_ACKS_LATE=1
+      - CELERYD_TASK_SOFT_TIME_LIMIT=600
+      - CELERYD_TASK_TIME_LIMIT=900
+    deploy:
+      resources:
+        limits:
+          memory: 8G    # Memoria elevata per documenti pesanti
+          cpus: '2.0'
+        reservations:
+          memory: 4G
+          cpus: '1.0'
+    networks:
+      - archivista-network
+
+  # 🔵 Beat - Scheduler per task periodici
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: archivista-beat
+    restart: unless-stopped
+    command: >
+      sh -c "
+        python -c 'from error_diagnosis_framework import setup_database; setup_database()' &&
+        celery -A archivista_processing.celery_app beat --loglevel=info --schedule=/app/celerybeat-schedule
+      "
+    volumes:
+      - documenti_input:/app/documenti_da_processare
+      - documenti_archivio:/app/Dall_Origine_alla_Complessita
+      - database:/app/db_memoria
+      - logs:/app/logs
+      - celerybeat_schedule:/app/celerybeat-schedule
+      - ./config:/app/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - PYTHONPATH=/app
+    networks:
+      - archivista-network
+
+  # 🟠 Flower - Monitoraggio Celery
+  flower:
+    image: mher/flower:2.0
+    container_name: archivista-flower
+    restart: unless-stopped
+    command: celery -A archivista_processing.celery_app flower --port=5555 --address=0.0.0.0
+    ports:
+      - "5555:5555"
+    volumes:
+      - logs:/app/logs
+    depends_on:
+      - redis
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - FLOWER_PORT=5555
+    networks:
+      - archivista-network
+
+  # 🟣 Backup - Sistema backup automatico
+  backup:
+    image: alpine:latest
+    container_name: archivista-backup
+    restart: unless-stopped
+    volumes:
+      - documenti_input:/backup/input:ro
+      - documenti_archivio:/backup/archive:ro
+      - database:/backup/database:ro
+      - logs:/backup/logs:ro
+      - ./backups:/archive
+    command: |
+      sh -c "
+        while true; do
+          echo '🔄 Creating backup...' &&
+          tar czf /archive/backup-\$(date +%%Y%%m%%d-%%H%%M%%S).tar.gz -C /backup . &&
+          echo '✅ Backup created' &&
+          # Mantieni solo ultimi 7 giorni di backup
+          find /archive -name 'backup-*.tar.gz' -mtime +7 -delete &&
+          sleep 86400; # Backup giornaliero
+        done
+      "
+    networks:
+      - archivista-network
+
+  # 🟤 Log Rotation - Gestione log
+  logrotate:
+    image: alpine:latest
+    container_name: archivista-logrotate
+    restart: unless-stopped
+    volumes:
+      - logs:/app/logs
+    command: |
+      sh -c "
+        while true; do
+          # Ruota log più vecchi di 7 giorni
+          find /app/logs -name '*.log' -mtime +7 -exec gzip {} \; 2>/dev/null || true &&
+          sleep 3600; # Ogni ora
+        done
+      "
+    networks:
+      - archivista-network
+
+# 📁 Volumi ottimizzati per performance
+volumes:
+  # Volumi con configurazione ottimizzata
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/redis
+
+  documenti_input:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./documenti_da_processare
+
+  documenti_archivio:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./Dall_Origine_alla_Complessita
+
+  database:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./db_memoria
+
+  logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./logs
+
+  celerybeat_schedule:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./celerybeat-schedule
+
+# 🌐 Rete ottimizzata
+networks:
+  archivista-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# 🔧 Configurazioni esterne
+x-custom-config: &default-config
+  restart: unless-stopped
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+  healthcheck:
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 30s

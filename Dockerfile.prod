@@ -1,0 +1,102 @@
+# 🐳 Dockerfile Production - Archivista AI v3.0
+# Ottimizzato per processamento documenti pesanti (single-user)
+# Multi-stage build per ottimizzazione dimensioni e sicurezza
+
+# === STAGE 1: Builder ===
+FROM python:3.11-slim as builder
+
+# Installa dipendenze di build
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Crea utente non-root per sicurezza
+RUN useradd --create-home --shell /bin/bash --uid 1000 archivista
+
+# Imposta working directory
+WORKDIR /app
+
+# Copia requirements per caching ottimizzato
+COPY requirements.txt ./
+COPY requirements.in ./
+
+# Installa dipendenze Python
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# === STAGE 2: Production ===
+FROM python:3.11-slim as production
+
+# Installa solo dipendenze runtime essenziali
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Crea utente non-root per sicurezza
+RUN useradd --create-home --shell /bin/bash --uid 1000 archivista
+
+# Imposta working directory
+WORKDIR /app
+
+# Copia dipendenze dal builder
+COPY --from=builder /home/archivista/.local /home/archivista/.local
+
+# Crea directory necessarie con permessi corretti
+RUN mkdir -p /app/db_memoria /app/documenti_da_processare /app/Dall_Origine_alla_Complessita /app/logs /app/backups && \
+    chown -R archivista:archivista /app
+
+# Copia codice applicazione
+COPY --chown=archivista:archivista . .
+
+# Imposta PYTHONPATH
+ENV PYTHONPATH=/app:$PYTHONPATH
+ENV PATH=/home/archivista/.local/bin:$PATH
+
+# Crea script di inizializzazione
+RUN echo '#!/bin/bash\n\
+echo "🚀 Inizializzazione Archivista AI..."\n\
+python -c "from error_diagnosis_framework import setup_database; setup_database()"\n\
+echo "✅ Database inizializzato"\n\
+echo "🏃 Avvio applicazione..."\n\
+exec "$@"' > /app/init.sh && \
+    chmod +x /app/init.sh
+
+# Script di health check
+RUN echo '#!/bin/bash\n\
+# Health check per servizi\n\
+if [ "$1" = "webapp" ]; then\n\
+    curl -f http://localhost:8501/_stcore/health 2>/dev/null || exit 1\n\
+elif [ "$1" = "worker" ]; then\n\
+    python -c "import redis; r=redis.Redis(host='\''redis'\''); r.ping()" 2>/dev/null || exit 1\n\
+fi\n\
+exit 0' > /app/healthcheck.sh && \
+    chmod +x /app/healthcheck.sh
+
+# Cambia ownership di tutti i file
+RUN chown -R archivista:archivista /app
+
+# Switch a utente non-root
+USER archivista
+
+# Health check per container
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD /app/healthcheck.sh webapp || exit 1
+
+# Esposizione porte
+EXPOSE 8501
+
+# Comando default
+CMD ["/app/init.sh", "streamlit", "run", "main_new_architecture.py", "--server.port", "8501", "--server.address", "0.0.0.0", "--server.headless", "true"]
+
+# === LABELS PER METADATI ===
+LABEL version="3.0"
+LABEL description="Archivista AI - Sistema di processamento documenti con diagnosi errori avanzata"
+LABEL maintainer="Archivista AI Team"
+LABEL stage="production"
+
+# === OTTIMIZZAZIONI PERFORMANCE ===
+# Layer caching ottimizzato
+# Security hardening con utente non-root
+# Health checks integrati
+# Resource limits configurabili
