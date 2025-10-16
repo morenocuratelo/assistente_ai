@@ -2,8 +2,13 @@
 """
 Questo modulo definisce la struttura gerarchica della conoscenza
 utilizzata per categorizzare automaticamente i documenti.
+
+Include modelli Bayesian per la gestione dinamica della conoscenza con punteggi di confidenza.
 """
 import re
+from pydantic import BaseModel, Field
+from typing import List, Optional
+from datetime import datetime
 
 # Definisce la base di conoscenza come un dizionario.
 KNOWLEDGE_BASE_STRUCTURE = {
@@ -101,13 +106,188 @@ def is_valid_category_id(category_id):
     """Verifica se un ID di categoria è valido."""
     if not category_id or not isinstance(category_id, str):
         return False
-    
+
     parts = category_id.split('/')
     if len(parts) != 2:
         return False
-        
+
     part_id, chapter_id = parts
-    
-    return (part_id in KNOWLEDGE_BASE_STRUCTURE and 
+
+    return (part_id in KNOWLEDGE_BASE_STRUCTURE and
             chapter_id in KNOWLEDGE_BASE_STRUCTURE[part_id]["chapters"])
 
+# --- MODELLI BAYESIAN PER LA GESTIONE DINAMICA DELLA CONOSCENZA ---
+
+class BayesianKnowledgeEntity(BaseModel):
+    """
+    Modello Pydantic per le entità concettuali con gestione Bayesiana della confidenza.
+
+    Ogni entità rappresenta un concetto, teoria, autore, formula, tecnica o metodo
+    estratto dai documenti, con un punteggio di confidenza dinamico.
+    """
+    entity_id: Optional[int] = Field(None, description="ID univoco nel database")
+    user_id: int = Field(..., description="ID dell'utente proprietario")
+    entity_type: str = Field(..., description="Tipo di entità (concept, theory, author, formula, technique, method)")
+    entity_name: str = Field(..., description="Nome dell'entità")
+    entity_description: Optional[str] = Field(None, description="Descrizione dell'entità")
+    source_file_name: str = Field(..., description="Documento sorgente da cui è stata estratta")
+    confidence_score: float = Field(0.75, ge=0.0, le=1.0, description="Punteggio di confidenza Bayesiano (0.0-1.0)")
+    evidence_count: int = Field(0, description="Numero di prove che hanno contribuito al punteggio")
+    created_at: datetime = Field(default_factory=datetime.now, description="Data di creazione")
+    updated_at: datetime = Field(default_factory=datetime.now, description="Ultimo aggiornamento")
+
+    class Config:
+        from_attributes = True
+
+class BayesianKnowledgeRelationship(BaseModel):
+    """
+    Modello Pydantic per le relazioni concettuali con gestione Bayesiana della confidenza.
+
+    Ogni relazione rappresenta un collegamento significativo tra entità,
+    con un punteggio di confidenza che evolve basandosi sulle prove.
+    """
+    relationship_id: Optional[int] = Field(None, description="ID univoco nel database")
+    user_id: int = Field(..., description="ID dell'utente proprietario")
+    source_entity_id: int = Field(..., description="ID dell'entità sorgente")
+    target_entity_id: int = Field(..., description="ID dell'entità destinazione")
+    relationship_type: str = Field(..., description="Tipo di relazione (proposed_by, related_to, part_of, prerequisite_for, example_of, contradicts, extends)")
+    relationship_description: Optional[str] = Field(None, description="Descrizione della relazione")
+    confidence_score: float = Field(0.75, ge=0.0, le=1.0, description="Punteggio di confidenza Bayesiano (0.0-1.0)")
+    evidence_count: int = Field(0, description="Numero di prove che hanno contribuito al punteggio")
+    created_at: datetime = Field(default_factory=datetime.now, description="Data di creazione")
+    updated_at: datetime = Field(default_factory=datetime.now, description="Ultimo aggiornamento")
+
+    class Config:
+        from_attributes = True
+
+class EvidenceRecord(BaseModel):
+    """
+    Modello per registrare le prove che contribuiscono all'aggiornamento Bayesiano.
+    """
+    evidence_id: Optional[int] = Field(None, description="ID univoco della prova")
+    entity_id: Optional[int] = Field(None, description="ID dell'entità coinvolta")
+    relationship_id: Optional[int] = Field(None, description="ID della relazione coinvolta")
+    evidence_type: str = Field(..., description="Tipo di prova (document_extraction, user_feedback, corroboration, contradiction)")
+    evidence_source: str = Field(..., description="Fonte della prova (file_name, user_id, etc.)")
+    evidence_strength: float = Field(..., ge=0.0, le=1.0, description="Forza della prova (0.0-1.0)")
+    evidence_description: str = Field(..., description="Descrizione della prova")
+    previous_confidence: float = Field(..., description="Punteggio di confidenza precedente")
+    new_confidence: float = Field(..., description="Nuovo punteggio di confidenza")
+    created_at: datetime = Field(default_factory=datetime.now, description="Data della prova")
+
+    class Config:
+        from_attributes = True
+
+class ConfidenceUpdateRequest(BaseModel):
+    """
+    Modello per le richieste di aggiornamento della confidenza.
+    """
+    entity_id: Optional[int] = Field(None, description="ID dell'entità da aggiornare")
+    relationship_id: Optional[int] = Field(None, description="ID della relazione da aggiornare")
+    entity_name: Optional[str] = Field(None, description="Nome dell'entità (se ID non disponibile)")
+    evidence_type: str = Field(..., description="Tipo di prova")
+    evidence_strength: float = Field(..., ge=0.0, le=1.0, description="Forza della prova")
+    evidence_description: str = Field(..., description="Descrizione della prova")
+    user_id: int = Field(..., description="ID dell'utente che fornisce la prova")
+
+# --- FUNZIONI DI UTILITÀ PER LA GESTIONE BAYESIANA ---
+
+def get_default_confidence_score() -> float:
+    """
+    Restituisce il punteggio di confidenza di default per nuove entità/relazioni.
+    Utilizziamo 0.75 come valore "ragionevolmente certo" ma non assoluto.
+    """
+    return 0.75
+
+def get_evidence_strength(evidence_type: str) -> float:
+    """
+    Restituisce la forza di default per un tipo di prova specifico.
+
+    Args:
+        evidence_type: Tipo di prova (document_extraction, user_feedback, corroboration, contradiction)
+
+    Returns:
+        float: Forza della prova (0.0-1.0)
+    """
+    strength_map = {
+        'document_extraction': 0.6,    # Moderata - estrazione AI
+        'user_feedback_positive': 0.9, # Alta - conferma utente
+        'user_feedback_negative': 0.1, # Molto bassa - smentita utente
+        'corroboration': 0.7,          # Buona - conferma incrociata
+        'contradiction': 0.2,          # Bassa - contraddizione
+        'temporal_decay': -0.05        # Leggera riduzione nel tempo
+    }
+    return strength_map.get(evidence_type, 0.5)
+
+def calculate_confidence_update(current_confidence: float, evidence_strength: float, learning_rate: float = 0.3) -> float:
+    """
+    Calcola il nuovo punteggio di confidenza usando una formula Bayesian-inspired.
+
+    Args:
+        current_confidence: Punteggio attuale (0.0-1.0)
+        evidence_strength: Forza della nuova prova (-1.0 to 1.0)
+        learning_rate: Tasso di apprendimento per l'aggiornamento (0.0-1.0)
+
+    Returns:
+        float: Nuovo punteggio di confidenza
+    """
+    # Applica l'aggiornamento con learning rate
+    if evidence_strength >= 0:
+        # Prova positiva: aumenta la confidenza
+        new_confidence = current_confidence * (1 - learning_rate) + evidence_strength * learning_rate
+    else:
+        # Prova negativa: diminuisce drasticamente la confidenza
+        new_confidence = current_confidence * (1 - learning_rate) + abs(evidence_strength) * learning_rate * 0.5
+
+    # Assicurati che il valore sia nel range valido
+    return max(0.0, min(1.0, new_confidence))
+
+def get_confidence_color(confidence_score: float) -> str:
+    """
+    Restituisce un colore rappresentativo del punteggio di confidenza.
+
+    Args:
+        confidence_score: Punteggio di confidenza (0.0-1.0)
+
+    Returns:
+        str: Colore in formato hex
+    """
+    if confidence_score >= 0.8:
+        return "#28a745"  # Verde brillante - alta confidenza
+    elif confidence_score >= 0.6:
+        return "#ffc107"  # Giallo - confidenza media
+    elif confidence_score >= 0.4:
+        return "#fd7e14"  # Arancione - bassa confidenza
+    else:
+        return "#dc3545"  # Rosso - molto bassa confidenza
+
+def get_confidence_label(confidence_score: float) -> str:
+    """
+    Restituisce un'etichetta testuale per il punteggio di confidenza.
+
+    Args:
+        confidence_score: Punteggio di confidenza (0.0-1.0)
+
+    Returns:
+        str: Etichetta descrittiva
+    """
+    if confidence_score >= 0.8:
+        return "Alta Confidenza"
+    elif confidence_score >= 0.6:
+        return "Confidenza Media"
+    elif confidence_score >= 0.3:
+        return "Bassa Confidenza"
+    else:
+        return "Molto Bassa Confidenza"
+
+def validate_confidence_score(confidence_score: float) -> bool:
+    """
+    Valida che un punteggio di confidenza sia nel range corretto.
+
+    Args:
+        confidence_score: Punteggio da validare
+
+    Returns:
+        bool: True se valido
+    """
+    return 0.0 <= confidence_score <= 1.0

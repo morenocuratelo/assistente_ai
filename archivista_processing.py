@@ -28,6 +28,12 @@ from config import initialize_services
 import prompt_manager # <-- MODIFICA: Importa il nuovo gestore dei prompt
 import knowledge_structure
 from file_utils import setup_database
+# Import del motore di inferenza Bayesiano
+from bayesian_inference_engine import (
+    create_inference_engine,
+    ConfidenceUpdateRequest,
+    process_evidence_batch
+)
 
 # --- CONFIGURAZIONE ---
 DOCS_TO_PROCESS_DIR = "documenti_da_processare"
@@ -501,6 +507,64 @@ def process_document_task(self, file_path):
             print(f"⚠️ Errore generazione task AI per {file_name}: {e}")
             academic_metadata['ai_tasks'] = {}
 
+        # 4.7. PROCESAMENTO BAYESIANO DELLA CONOSCENZA
+        update_status("Analisi Bayesiana...", file_name)
+
+        # Crea motore di inferenza Bayesiano (usa user_id di default se disponibile)
+        # Nota: In produzione, questo dovrebbe usare l'user_id del chiamante
+        # Per ora usiamo un user_id di default (1) per documenti non associati a utenti specifici
+        default_user_id = 1
+        bayesian_engine = create_inference_engine(user_id=default_user_id, learning_rate=0.3)
+
+        # Prepara entità per il processamento Bayesiano
+        extracted_entities = []
+        for entity in knowledge_entities:
+            extracted_entities.append({
+                'name': entity.get('entity_name', ''),
+                'type': entity.get('entity_type', 'concept'),
+                'description': entity.get('entity_description', '')
+            })
+
+        # Prepara relazioni per il processamento Bayesiano
+        extracted_relationships = []
+        for relationship in knowledge_relationships:
+            extracted_relationships.append({
+                'source': relationship.get('source_name', ''),
+                'target': relationship.get('target_name', ''),
+                'type': relationship.get('relationship_type', 'related_to'),
+                'description': relationship.get('relationship_description', '')
+            })
+
+        # Processa le prove estratte tramite il motore Bayesiano
+        try:
+            bayesian_result = bayesian_engine.process_document_evidence(
+                document_file_name=file_name,
+                extracted_entities=extracted_entities,
+                extracted_relationships=extracted_relationships
+            )
+
+            if bayesian_result.success:
+                print(f"✅ Processamento Bayesiano completato: {bayesian_result.entities_created} entità, {bayesian_result.relationships_created} relazioni")
+                academic_metadata['bayesian_processing'] = {
+                    'success': True,
+                    'entities_created': bayesian_result.entities_created,
+                    'relationships_created': bayesian_result.relationships_created,
+                    'confidence_summary': bayesian_engine.get_confidence_summary()
+                }
+            else:
+                print(f"⚠️ Processamento Bayesiano fallito: {bayesian_result.errors}")
+                academic_metadata['bayesian_processing'] = {
+                    'success': False,
+                    'errors': bayesian_result.errors
+                }
+
+        except Exception as e:
+            print(f"❌ Errore nel processamento Bayesiano: {e}")
+            academic_metadata['bayesian_processing'] = {
+                'success': False,
+                'error': str(e)
+            }
+
         # Salvare entità e relazioni nel grafo della conoscenza
         # Nota: Dato che process_document_task non ha user_id, questo sarà gestito dal chiamante
         # Per ora, le mettiamo in metadata e saranno salvate dal chiamante se loggato
@@ -722,3 +786,279 @@ def cleanup_old_data():
 def scan_for_new_documents_periodic():
     """Task periodica: scansiona la cartella di input e avvia il processamento per i nuovi file."""
     pass
+
+@celery_app.task(name='archivista.process_user_bayesian_knowledge')
+def process_user_bayesian_knowledge_task(user_id: int, file_name: str):
+    """
+    Task specifico per processare la conoscenza Bayesiana per un utente specifico.
+
+    Questo task viene chiamato dopo che un documento è stato processato,
+    per aggiornare il grafo della conoscenza personale dell'utente con confidenza Bayesiana.
+
+    Args:
+        user_id: ID dell'utente proprietario della conoscenza
+        file_name: Nome del file già processato
+
+    Returns:
+        dict: Risultato del processamento Bayesiano
+    """
+    lock_file = os.path.join(DB_STORAGE_DIR, f"bayesian_{user_id}_{file_name}.lock")
+
+    # Check for existing lock
+    if os.path.exists(lock_file):
+        lock_age = time.time() - os.path.getmtime(lock_file)
+        if lock_age < 300:  # 5 minutes timeout
+            print(f"⏳ Processamento Bayesiano già in corso per user {user_id}, file {file_name}")
+            return {'status': 'already_processing', 'user_id': user_id, 'file_name': file_name}
+        else:
+            print(f"⚠️ Rimuovo lock obsoleto per processamento Bayesiano")
+            os.remove(lock_file)
+
+    try:
+        # Create lock file
+        with open(lock_file, "w") as f:
+            f.write(f"{os.getpid()},{time.time()}")
+
+        print(f"🧠 Inizio processamento Bayesiano per user {user_id}, file {file_name}")
+
+        # Verifica che il documento esista nel database
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT category_id, category_name, formatted_preview, keywords, ai_tasks
+                FROM papers WHERE file_name = ?
+            """, (file_name,))
+
+            paper = cursor.fetchone()
+            if not paper:
+                raise ValueError(f"Documento {file_name} non trovato nel database")
+
+        # Crea motore di inferenza personalizzato per l'utente
+        bayesian_engine = create_inference_engine(user_id=user_id, learning_rate=0.3)
+
+        # Estrai testo del documento per l'analisi (se necessario)
+        # Nota: In produzione, potresti voler cachare il testo estratto
+        file_path = None
+        if paper['category_id'] and paper['category_id'] != "UNCATEGORIZED/C00":
+            part_id, chapter_id = paper['category_id'].split('/')
+            categorized_path = os.path.join(CATEGORIZED_ARCHIVE_DIR, part_id, chapter_id, file_name)
+            if os.path.exists(categorized_path):
+                file_path = categorized_path
+
+        if not file_path:
+            raise ValueError(f"File {file_name} non trovato nel percorso categorizzato")
+
+        # Estrai testo per l'analisi Bayesiana
+        file_ext = os.path.splitext(file_name)[1].lower()
+        extractor = get_text_extractor(file_ext)
+        if not extractor:
+            raise ValueError(f"Formato file non supportato per analisi Bayesiana: {file_ext}")
+
+        full_text = extractor(file_path)
+        if not full_text or not full_text.strip():
+            raise ValueError("Documento vuoto o illeggibile per analisi Bayesiana")
+
+        # Ri-estrai entità e relazioni per questo utente specifico
+        # (in produzione, potresti voler salvare queste informazioni per utente)
+        knowledge_entities = []
+        knowledge_relationships = []
+
+        # Usa le stesse funzioni di estrazione del processamento principale
+        # ma con contesto utente-specifico
+
+        # Estrazione entità concettuali
+        try:
+            entities_prompt = PromptTemplate(prompt_manager.get_prompt("KNOWLEDGE_ENTITIES_PROMPT"))
+            entities_query = entities_prompt.format(document_text=full_text[:3000])
+            entities_response = Settings.llm.complete(entities_query)
+            entities_text = str(entities_response).strip()
+
+            try:
+                entities_data = json.loads(entities_text)
+                knowledge_entities = entities_data
+                print(f"✅ Estratte {len(knowledge_entities)} entità per user {user_id}")
+            except (json.JSONDecodeError, KeyError):
+                print(f"⚠️ Impossibile parsare entità JSON per user {user_id}")
+                knowledge_entities = []
+
+        except Exception as e:
+            print(f"⚠️ Errore estrazione entità per user {user_id}: {e}")
+            knowledge_entities = []
+
+        # Estrazione relazioni (se abbiamo entità)
+        if knowledge_entities:
+            try:
+                entities_list = [f"- {e['entity_name']} ({e['entity_type']})" for e in knowledge_entities]
+                entities_list_text = "\n".join(entities_list)
+
+                relationships_prompt = PromptTemplate(prompt_manager.get_prompt("ENTITY_RELATIONSHIPS_PROMPT"))
+                relationships_query = relationships_prompt.format(
+                    document_text=full_text[:3000],
+                    entities_list=entities_list_text
+                )
+                relationships_response = Settings.llm.complete(relationships_query)
+                relationships_text = str(relationships_response).strip()
+
+                try:
+                    relationships_data = json.loads(relationships_text)
+                    knowledge_relationships = relationships_data
+                    print(f"✅ Estratte {len(knowledge_relationships)} relazioni per user {user_id}")
+                except (json.JSONDecodeError, KeyError):
+                    print(f"⚠️ Impossibile parsare relazioni JSON per user {user_id}")
+                    knowledge_relationships = []
+
+            except Exception as e:
+                print(f"⚠️ Errore estrazione relazioni per user {user_id}: {e}")
+                knowledge_relationships = []
+
+        # Prepara dati per il motore Bayesiano
+        extracted_entities = []
+        for entity in knowledge_entities:
+            extracted_entities.append({
+                'name': entity.get('entity_name', ''),
+                'type': entity.get('entity_type', 'concept'),
+                'description': entity.get('entity_description', '')
+            })
+
+        extracted_relationships = []
+        for relationship in knowledge_relationships:
+            extracted_relationships.append({
+                'source': relationship.get('source_name', ''),
+                'target': relationship.get('target_name', ''),
+                'type': relationship.get('relationship_type', 'related_to'),
+                'description': relationship.get('relationship_description', '')
+            })
+
+        # Processa tramite motore Bayesiano
+        bayesian_result = bayesian_engine.process_document_evidence(
+            document_file_name=file_name,
+            extracted_entities=extracted_entities,
+            extracted_relationships=extracted_relationships
+        )
+
+        # Risultato finale
+        result_data = {
+            'status': 'success' if bayesian_result.success else 'error',
+            'user_id': user_id,
+            'file_name': file_name,
+            'entities_created': bayesian_result.entities_created,
+            'relationships_created': bayesian_result.relationships_created,
+            'confidence_summary': bayesian_engine.get_confidence_summary()
+        }
+
+        if not bayesian_result.success:
+            result_data['errors'] = bayesian_result.errors
+
+        print(f"✅ Processamento Bayesiano completato per user {user_id}")
+        return result_data
+
+    except Exception as e:
+        error_msg = f"Errore nel processamento Bayesiano per user {user_id}: {str(e)}"
+        print(f"❌ {error_msg}")
+        return {
+            'status': 'error',
+            'user_id': user_id,
+            'file_name': file_name,
+            'error': str(e)
+        }
+    finally:
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+            print(f"🔓 Lock rilasciato per processamento Bayesiano user {user_id}")
+
+@celery_app.task(name='archivista.process_user_feedback_bayesian')
+def process_user_feedback_bayesian_task(user_id: int, target_type: str, target_id: int,
+                                      feedback_type: str, feedback_text: str = ""):
+    """
+    Task per processare il feedback dell'utente tramite il motore Bayesiano.
+
+    Args:
+        user_id: ID dell'utente che fornisce il feedback
+        target_type: 'entity' o 'relationship'
+        target_id: ID dell'entità o relazione target
+        feedback_type: 'positive', 'negative', o 'correction'
+        feedback_text: Testo esplicativo del feedback
+
+    Returns:
+        dict: Risultato del processamento del feedback
+    """
+    try:
+        print(f"👤 Processamento feedback Bayesiano per user {user_id}")
+
+        # Crea motore di inferenza per l'utente
+        bayesian_engine = create_inference_engine(user_id=user_id, learning_rate=0.3)
+
+        # Processa il feedback
+        feedback_result = bayesian_engine.process_user_feedback(
+            target_type=target_type,
+            target_id=target_id,
+            feedback_type=feedback_type,
+            feedback_strength=1.0,
+            feedback_text=feedback_text
+        )
+
+        result_data = {
+            'status': 'success' if feedback_result.success else 'error',
+            'user_id': user_id,
+            'target_type': target_type,
+            'target_id': target_id,
+            'feedback_type': feedback_type,
+            'updates_performed': len(feedback_result.updates_performed)
+        }
+
+        if not feedback_result.success:
+            result_data['errors'] = feedback_result.errors
+
+        print(f"✅ Feedback processato per user {user_id}")
+        return result_data
+
+    except Exception as e:
+        error_msg = f"Errore nel processamento feedback per user {user_id}: {str(e)}"
+        print(f"❌ {error_msg}")
+        return {
+            'status': 'error',
+            'user_id': user_id,
+            'error': str(e)
+        }
+
+@celery_app.task(name='archivista.apply_temporal_decay_bayesian')
+def apply_temporal_decay_bayesian_task(user_id: int):
+    """
+    Task per applicare decadimento temporale al grafo della conoscenza dell'utente.
+
+    Args:
+        user_id: ID dell'utente
+
+    Returns:
+        dict: Risultato dell'operazione di decadimento
+    """
+    try:
+        print(f"🕐 Applicazione decadimento temporale per user {user_id}")
+
+        # Crea motore di inferenza per l'utente
+        bayesian_engine = create_inference_engine(user_id=user_id, learning_rate=0.3)
+
+        # Applica decadimento temporale
+        decay_result = bayesian_engine.apply_temporal_decay_to_all()
+
+        result_data = {
+            'status': 'success' if decay_result.success else 'error',
+            'user_id': user_id,
+            'entities_updated': decay_result.metadata.get('entities_updated', 0),
+            'relationships_updated': decay_result.metadata.get('relationships_updated', 0)
+        }
+
+        if not decay_result.success:
+            result_data['errors'] = decay_result.errors
+
+        print(f"✅ Decadimento temporale applicato per user {user_id}")
+        return result_data
+
+    except Exception as e:
+        error_msg = f"Errore nell'applicazione decadimento temporale per user {user_id}: {str(e)}"
+        print(f"❌ {error_msg}")
+        return {
+            'status': 'error',
+            'user_id': user_id,
+            'error': str(e)
+        }

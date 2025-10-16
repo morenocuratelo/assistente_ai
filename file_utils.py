@@ -3,7 +3,18 @@ import sqlite3
 import os
 import pandas as pd
 import json
-from knowledge_structure import KNOWLEDGE_BASE_STRUCTURE
+from knowledge_structure import (
+    KNOWLEDGE_BASE_STRUCTURE,
+    BayesianKnowledgeEntity,
+    BayesianKnowledgeRelationship,
+    EvidenceRecord,
+    ConfidenceUpdateRequest,
+    get_default_confidence_score,
+    get_evidence_strength,
+    calculate_confidence_update,
+    validate_confidence_score
+)
+from datetime import datetime
 
 # --- CONFIGURAZIONE ---
 DB_STORAGE_DIR = "db_memoria"
@@ -1883,4 +1894,741 @@ def get_dashboard_data(user_id: int) -> dict:
             'activity_summary': {},
             'most_accessed': [],
             'is_new_user': True
+        }
+
+# --- FUNZIONI BAYESIANE PER LA GESTIONE DELLA CONOSCENZA DINAMICA ---
+
+def create_bayesian_entity(entity_data: BayesianKnowledgeEntity) -> int:
+    """
+    Crea una nuova entità concettuale con punteggio di confidenza Bayesiano.
+
+    Args:
+        entity_data: Oggetto BayesianKnowledgeEntity con i dati dell'entità
+
+    Returns:
+        int: ID dell'entità creata
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+
+            # Usa il punteggio di default se non specificato
+            confidence_score = entity_data.confidence_score
+            if confidence_score is None:
+                confidence_score = get_default_confidence_score()
+
+            cursor.execute("""
+                INSERT INTO concept_entities (
+                    user_id, entity_type, entity_name, entity_description,
+                    source_file_name, confidence_score, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                entity_data.user_id,
+                entity_data.entity_type,
+                entity_data.entity_name,
+                entity_data.entity_description,
+                entity_data.source_file_name,
+                confidence_score,
+                entity_data.created_at.isoformat()
+            ))
+
+            entity_id = cursor.lastrowid
+            conn.commit()
+
+            # Registra l'evento come prova iniziale
+            record_evidence(
+                entity_id=entity_id,
+                evidence_type='document_extraction',
+                evidence_source=entity_data.source_file_name,
+                evidence_strength=get_evidence_strength('document_extraction'),
+                evidence_description=f"Entità '{entity_data.entity_name}' estratta automaticamente dal documento"
+            )
+
+            return entity_id
+
+    except Exception as e:
+        print(f"Errore nella creazione dell'entità Bayesiana: {e}")
+        raise
+
+def create_bayesian_relationship(relationship_data: BayesianKnowledgeRelationship) -> int:
+    """
+    Crea una nuova relazione concettuale con punteggio di confidenza Bayesiano.
+
+    Args:
+        relationship_data: Oggetto BayesianKnowledgeRelationship con i dati della relazione
+
+    Returns:
+        int: ID della relazione creata
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+
+            # Verifica che entrambe le entità esistano
+            cursor.execute("""
+                SELECT id FROM concept_entities
+                WHERE user_id = ? AND entity_name = ?
+            """, (relationship_data.user_id, relationship_data.source_entity_id))
+
+            source_result = cursor.fetchone()
+            if not source_result:
+                raise ValueError(f"Entità sorgente non trovata: {relationship_data.source_entity_id}")
+
+            cursor.execute("""
+                SELECT id FROM concept_entities
+                WHERE user_id = ? AND entity_name = ?
+            """, (relationship_data.user_id, relationship_data.target_entity_id))
+
+            target_result = cursor.fetchone()
+            if not target_result:
+                raise ValueError(f"Entità destinazione non trovata: {relationship_data.target_entity_id}")
+
+            source_entity_id = source_result['id']
+            target_entity_id = target_result['id']
+
+            # Usa il punteggio di default se non specificato
+            confidence_score = relationship_data.confidence_score
+            if confidence_score is None:
+                confidence_score = get_default_confidence_score()
+
+            cursor.execute("""
+                INSERT INTO concept_relationships (
+                    user_id, source_entity_id, target_entity_id, relationship_type,
+                    relationship_description, confidence_score, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                relationship_data.user_id,
+                source_entity_id,
+                target_entity_id,
+                relationship_data.relationship_type,
+                relationship_data.relationship_description,
+                confidence_score,
+                relationship_data.created_at.isoformat()
+            ))
+
+            relationship_id = cursor.lastrowid
+            conn.commit()
+
+            # Registra l'evento come prova iniziale
+            record_evidence(
+                relationship_id=relationship_id,
+                evidence_type='document_extraction',
+                evidence_source=f"{relationship_data.source_entity_id}-{relationship_data.target_entity_id}",
+                evidence_strength=get_evidence_strength('document_extraction'),
+                evidence_description=f"Relazione '{relationship_data.relationship_type}' estratta automaticamente"
+            )
+
+            return relationship_id
+
+    except Exception as e:
+        print(f"Errore nella creazione della relazione Bayesiana: {e}")
+        raise
+
+def update_entity_confidence(entity_id: int, evidence_type: str, evidence_strength: float, evidence_description: str) -> float:
+    """
+    Aggiorna il punteggio di confidenza di un'entità usando inferenza Bayesiana.
+
+    Args:
+        entity_id: ID dell'entità da aggiornare
+        evidence_type: Tipo di prova ('document_extraction', 'user_feedback_positive', etc.)
+        evidence_strength: Forza della prova (-1.0 to 1.0)
+        evidence_description: Descrizione della prova
+
+    Returns:
+        float: Nuovo punteggio di confidenza
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+
+            # Recupera il punteggio attuale
+            cursor.execute("SELECT confidence_score FROM concept_entities WHERE id = ?", (entity_id,))
+            result = cursor.fetchone()
+
+            if not result:
+                raise ValueError(f"Entità con ID {entity_id} non trovata")
+
+            current_confidence = result['confidence_score']
+
+            # Calcola il nuovo punteggio
+            new_confidence = calculate_confidence_update(current_confidence, evidence_strength)
+
+            # Aggiorna l'entità
+            cursor.execute("""
+                UPDATE concept_entities
+                SET confidence_score = ?, updated_at = ?
+                WHERE id = ?
+            """, (new_confidence, datetime.now().isoformat(), entity_id))
+
+            # Registra la prova
+            record_evidence(
+                entity_id=entity_id,
+                evidence_type=evidence_type,
+                evidence_source="system_update",
+                evidence_strength=evidence_strength,
+                evidence_description=evidence_description,
+                previous_confidence=current_confidence,
+                new_confidence=new_confidence
+            )
+
+            conn.commit()
+            return new_confidence
+
+    except Exception as e:
+        print(f"Errore nell'aggiornamento confidenza entità: {e}")
+        raise
+
+def update_relationship_confidence(relationship_id: int, evidence_type: str, evidence_strength: float, evidence_description: str) -> float:
+    """
+    Aggiorna il punteggio di confidenza di una relazione usando inferenza Bayesiana.
+
+    Args:
+        relationship_id: ID della relazione da aggiornare
+        evidence_type: Tipo di prova
+        evidence_strength: Forza della prova (-1.0 to 1.0)
+        evidence_description: Descrizione della prova
+
+    Returns:
+        float: Nuovo punteggio di confidenza
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+
+            # Recupera il punteggio attuale
+            cursor.execute("SELECT confidence_score FROM concept_relationships WHERE id = ?", (relationship_id,))
+            result = cursor.fetchone()
+
+            if not result:
+                raise ValueError(f"Relazione con ID {relationship_id} non trovata")
+
+            current_confidence = result['confidence_score']
+
+            # Calcola il nuovo punteggio
+            new_confidence = calculate_confidence_update(current_confidence, evidence_strength)
+
+            # Aggiorna la relazione
+            cursor.execute("""
+                UPDATE concept_relationships
+                SET confidence_score = ?, updated_at = ?
+                WHERE id = ?
+            """, (new_confidence, datetime.now().isoformat(), relationship_id))
+
+            # Registra la prova
+            record_evidence(
+                relationship_id=relationship_id,
+                evidence_type=evidence_type,
+                evidence_source="system_update",
+                evidence_strength=evidence_strength,
+                evidence_description=evidence_description,
+                previous_confidence=current_confidence,
+                new_confidence=new_confidence
+            )
+
+            conn.commit()
+            return new_confidence
+
+    except Exception as e:
+        print(f"Errore nell'aggiornamento confidenza relazione: {e}")
+        raise
+
+def record_evidence(entity_id: int = None, relationship_id: int = None,
+                   evidence_type: str = None, evidence_source: str = None,
+                   evidence_strength: float = None, evidence_description: str = None,
+                   previous_confidence: float = None, new_confidence: float = None):
+    """
+    Registra una prova che ha contribuito all'aggiornamento Bayesiano.
+
+    Args:
+        entity_id: ID dell'entità coinvolta (opzionale)
+        relationship_id: ID della relazione coinvolta (opzionale)
+        evidence_type: Tipo di prova
+        evidence_source: Fonte della prova
+        evidence_strength: Forza della prova
+        evidence_description: Descrizione della prova
+        previous_confidence: Punteggio precedente
+        new_confidence: Nuovo punteggio
+    """
+    try:
+        # Crea tabella evidence se non esiste
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bayesian_evidence (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    entity_id INTEGER,
+                    relationship_id INTEGER,
+                    evidence_type TEXT NOT NULL,
+                    evidence_source TEXT NOT NULL,
+                    evidence_strength REAL NOT NULL,
+                    evidence_description TEXT NOT NULL,
+                    previous_confidence REAL,
+                    new_confidence REAL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (entity_id) REFERENCES concept_entities (id) ON DELETE CASCADE,
+                    FOREIGN KEY (relationship_id) REFERENCES concept_relationships (id) ON DELETE CASCADE
+                )
+            """)
+
+            cursor.execute("""
+                INSERT INTO bayesian_evidence (
+                    entity_id, relationship_id, evidence_type, evidence_source,
+                    evidence_strength, evidence_description, previous_confidence,
+                    new_confidence, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                entity_id,
+                relationship_id,
+                evidence_type,
+                evidence_source,
+                evidence_strength,
+                evidence_description,
+                previous_confidence,
+                new_confidence,
+                datetime.now().isoformat()
+            ))
+
+            conn.commit()
+
+    except Exception as e:
+        print(f"Errore nella registrazione della prova: {e}")
+        # Non bloccare l'app se la registrazione delle prove fallisce
+
+def get_entity_evidence_history(entity_id: int, limit: int = 10) -> list:
+    """
+    Recupera la cronologia delle prove per un'entità.
+
+    Args:
+        entity_id: ID dell'entità
+        limit: Numero massimo di record da restituire
+
+    Returns:
+        list: Lista delle prove ordinate per data
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM bayesian_evidence
+                WHERE entity_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (entity_id, limit))
+
+            evidence = cursor.fetchall()
+            return [dict(e) for e in evidence]
+
+    except Exception as e:
+        print(f"Errore nel recupero cronologia prove entità: {e}")
+        return []
+
+def get_relationship_evidence_history(relationship_id: int, limit: int = 10) -> list:
+    """
+    Recupera la cronologia delle prove per una relazione.
+
+    Args:
+        relationship_id: ID della relazione
+        limit: Numero massimo di record da restituire
+
+    Returns:
+        list: Lista delle prove ordinate per data
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM bayesian_evidence
+                WHERE relationship_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (relationship_id, limit))
+
+            evidence = cursor.fetchall()
+            return [dict(e) for e in evidence]
+
+    except Exception as e:
+        print(f"Errore nel recupero cronologia prove relazione: {e}")
+        return []
+
+def find_or_create_entity(user_id: int, entity_name: str, entity_type: str, source_file_name: str) -> int:
+    """
+    Trova un'entità esistente o ne crea una nuova se non esiste.
+
+    Args:
+        user_id: ID dell'utente
+        entity_name: Nome dell'entità
+        entity_type: Tipo di entità
+        source_file_name: Documento sorgente
+
+    Returns:
+        int: ID dell'entità (esistente o appena creata)
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+
+            # Cerca entità esistente
+            cursor.execute("""
+                SELECT id FROM concept_entities
+                WHERE user_id = ? AND entity_name = ? AND entity_type = ?
+            """, (user_id, entity_name, entity_type))
+
+            result = cursor.fetchone()
+
+            if result:
+                return result['id']
+            else:
+                # Crea nuova entità
+                entity_data = BayesianKnowledgeEntity(
+                    user_id=user_id,
+                    entity_type=entity_type,
+                    entity_name=entity_name,
+                    source_file_name=source_file_name,
+                    confidence_score=get_default_confidence_score()
+                )
+                return create_bayesian_entity(entity_data)
+
+    except Exception as e:
+        print(f"Errore in find_or_create_entity: {e}")
+        raise
+
+def find_or_create_relationship(user_id: int, source_entity_name: str, target_entity_name: str,
+                              relationship_type: str) -> int:
+    """
+    Trova una relazione esistente o ne crea una nuova se non esiste.
+
+    Args:
+        user_id: ID dell'utente
+        source_entity_name: Nome dell'entità sorgente
+        target_entity_name: Nome dell'entità destinazione
+        relationship_type: Tipo di relazione
+
+    Returns:
+        int: ID della relazione (esistente o appena creata)
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+
+            # Trova gli ID delle entità
+            cursor.execute("""
+                SELECT id FROM concept_entities
+                WHERE user_id = ? AND entity_name = ?
+            """, (user_id, source_entity_name))
+
+            source_result = cursor.fetchone()
+            if not source_result:
+                raise ValueError(f"Entità sorgente non trovata: {source_entity_name}")
+
+            cursor.execute("""
+                SELECT id FROM concept_entities
+                WHERE user_id = ? AND entity_name = ?
+            """, (user_id, target_entity_name))
+
+            target_result = cursor.fetchone()
+            if not target_result:
+                raise ValueError(f"Entità destinazione non trovata: {target_entity_name}")
+
+            source_entity_id = source_result['id']
+            target_entity_id = target_result['id']
+
+            # Cerca relazione esistente
+            cursor.execute("""
+                SELECT id FROM concept_relationships
+                WHERE user_id = ? AND source_entity_id = ? AND target_entity_id = ?
+                AND relationship_type = ?
+            """, (user_id, source_entity_id, target_entity_id, relationship_type))
+
+            result = cursor.fetchone()
+
+            if result:
+                return result['id']
+            else:
+                # Crea nuova relazione
+                relationship_data = BayesianKnowledgeRelationship(
+                    user_id=user_id,
+                    source_entity_id=source_entity_id,
+                    target_entity_id=target_entity_id,
+                    relationship_type=relationship_type,
+                    confidence_score=get_default_confidence_score()
+                )
+                return create_bayesian_relationship(relationship_data)
+
+    except Exception as e:
+        print(f"Errore in find_or_create_relationship: {e}")
+        raise
+
+def get_entities_by_confidence(user_id: int, min_confidence: float = 0.0, max_confidence: float = 1.0) -> list:
+    """
+    Recupera entità filtrate per punteggio di confidenza.
+
+    Args:
+        user_id: ID dell'utente
+        min_confidence: Confidenza minima (0.0-1.0)
+        max_confidence: Confidenza massima (0.0-1.0)
+
+    Returns:
+        list: Lista di entità filtrate
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM concept_entities
+                WHERE user_id = ? AND confidence_score BETWEEN ? AND ?
+                ORDER BY confidence_score DESC, created_at DESC
+            """, (user_id, min_confidence, max_confidence))
+
+            entities = cursor.fetchall()
+            return [dict(entity) for entity in entities]
+
+    except Exception as e:
+        print(f"Errore nel recupero entità per confidenza: {e}")
+        return []
+
+def get_relationships_by_confidence(user_id: int, min_confidence: float = 0.0, max_confidence: float = 1.0) -> list:
+    """
+    Recupera relazioni filtrate per punteggio di confidenza.
+
+    Args:
+        user_id: ID dell'utente
+        min_confidence: Confidenza minima (0.0-1.0)
+        max_confidence: Confidenza massima (0.0-1.0)
+
+    Returns:
+        list: Lista di relazioni filtrate con nomi delle entità
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT r.*, e1.entity_name as source_name, e1.entity_type as source_type,
+                       e2.entity_name as target_name, e2.entity_type as target_type
+                FROM concept_relationships r
+                JOIN concept_entities e1 ON r.source_entity_id = e1.id
+                JOIN concept_entities e2 ON r.target_entity_id = e2.id
+                WHERE r.user_id = ? AND r.confidence_score BETWEEN ? AND ?
+                ORDER BY r.confidence_score DESC, r.created_at DESC
+            """, (user_id, min_confidence, max_confidence))
+
+            relationships = cursor.fetchall()
+            return [dict(rel) for rel in relationships]
+
+    except Exception as e:
+        print(f"Errore nel recupero relazioni per confidenza: {e}")
+        return []
+
+def apply_temporal_decay(user_id: int, decay_factor: float = -0.05) -> dict:
+    """
+    Applica decadimento temporale ai punteggi di confidenza delle entità e relazioni.
+
+    Args:
+        user_id: ID dell'utente
+        decay_factor: Fattore di decadimento (negativo per riduzione)
+
+    Returns:
+        dict: Statistiche dell'operazione di decadimento
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+
+            # Applica decadimento alle entità
+            cursor.execute("""
+                UPDATE concept_entities
+                SET confidence_score = MAX(0.1, confidence_score + ?), updated_at = ?
+                WHERE user_id = ?
+            """, (decay_factor, datetime.now().isoformat(), user_id))
+
+            entities_updated = cursor.rowcount
+
+            # Applica decadimento alle relazioni
+            cursor.execute("""
+                UPDATE concept_relationships
+                SET confidence_score = MAX(0.1, confidence_score + ?), updated_at = ?
+                WHERE user_id = ?
+            """, (decay_factor, datetime.now().isoformat(), user_id))
+
+            relationships_updated = cursor.rowcount
+
+            # Registra l'operazione come prova di decadimento
+            record_evidence(
+                evidence_type='temporal_decay',
+                evidence_source='system_scheduler',
+                evidence_strength=decay_factor,
+                evidence_description=f"Decadimento temporale applicato: {abs(decay_factor):.3f}"
+            )
+
+            conn.commit()
+
+            return {
+                'entities_updated': entities_updated,
+                'relationships_updated': relationships_updated,
+                'decay_factor': decay_factor
+            }
+
+    except Exception as e:
+        print(f"Errore nell'applicazione decadimento temporale: {e}")
+        return {'entities_updated': 0, 'relationships_updated': 0, 'decay_factor': decay_factor}
+
+def get_knowledge_graph_with_confidence(user_id: int, min_confidence: float = 0.0) -> dict:
+    """
+    Recupera il grafo della conoscenza completo con filtri di confidenza.
+
+    Args:
+        user_id: ID dell'utente
+        min_confidence: Confidenza minima per includere entità/relazioni
+
+    Returns:
+        dict: Grafo della conoscenza filtrato
+    """
+    try:
+        entities = get_entities_by_confidence(user_id, min_confidence)
+        relationships = get_relationships_by_confidence(user_id, min_confidence)
+
+        return {
+            'entities': entities,
+            'relationships': relationships,
+            'confidence_threshold': min_confidence,
+            'total_entities': len(entities),
+            'total_relationships': len(relationships)
+        }
+
+    except Exception as e:
+        print(f"Errore nel recupero grafo con confidenza: {e}")
+        return {
+            'entities': [],
+            'relationships': [],
+            'confidence_threshold': min_confidence,
+            'total_entities': 0,
+            'total_relationships': 0
+        }
+
+def corroborate_entities_across_documents(user_id: int, entity_name: str, corroboration_threshold: float = 0.7) -> dict:
+    """
+    Trova e rafforza entità che appaiono in documenti multipli (corroborazione).
+
+    Args:
+        user_id: ID dell'utente
+        entity_name: Nome dell'entità da cercare
+        corroboration_threshold: Soglia di confidenza per applicare corroborazione
+
+    Returns:
+        dict: Risultati della corroborazione
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+
+            # Trova tutte le occorrenze dell'entità
+            cursor.execute("""
+                SELECT id, source_file_name, confidence_score
+                FROM concept_entities
+                WHERE user_id = ? AND entity_name = ?
+            """, (user_id, entity_name))
+
+            occurrences = cursor.fetchall()
+
+            if len(occurrences) < 2:
+                return {'corroborated': False, 'reason': 'Entità trovata in meno di 2 documenti'}
+
+            # Calcola forza di corroborazione basata sul numero di documenti
+            document_count = len(occurrences)
+            corroboration_strength = min(0.3 + (document_count - 1) * 0.1, 0.8)
+
+            # Applica rafforzamento solo se supera la soglia
+            if corroboration_strength >= corroboration_threshold:
+                # Aggiorna tutte le occorrenze
+                entity_ids = [occ['id'] for occ in occurrences]
+
+                for entity_id in entity_ids:
+                    update_entity_confidence(
+                        entity_id=entity_id,
+                        evidence_type='corroboration',
+                        evidence_strength=corroboration_strength,
+                        evidence_description=f"Corroborazione da {document_count} documenti"
+                    )
+
+                return {
+                    'corroborated': True,
+                    'entity_name': entity_name,
+                    'document_count': document_count,
+                    'corroboration_strength': corroboration_strength,
+                    'entities_updated': len(entity_ids)
+                }
+            else:
+                return {
+                    'corroborated': False,
+                    'entity_name': entity_name,
+                    'document_count': document_count,
+                    'reason': f'Forza corroborazione {corroboration_strength:.2f} sotto la soglia {corroboration_threshold}'
+                }
+
+    except Exception as e:
+        print(f"Errore nella corroborazione entità: {e}")
+        return {'corroborated': False, 'error': str(e)}
+
+def get_confidence_statistics(user_id: int) -> dict:
+    """
+    Calcola statistiche sui punteggi di confidenza del grafo della conoscenza.
+
+    Args:
+        user_id: ID dell'utente
+
+    Returns:
+        dict: Statistiche di confidenza
+    """
+    try:
+        with db_connect() as conn:
+            cursor = conn.cursor()
+
+            # Statistiche entità
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as total_entities,
+                    AVG(confidence_score) as avg_confidence,
+                    MIN(confidence_score) as min_confidence,
+                    MAX(confidence_score) as max_confidence,
+                    COUNT(CASE WHEN confidence_score >= 0.8 THEN 1 END) as high_confidence,
+                    COUNT(CASE WHEN confidence_score >= 0.6 AND confidence_score < 0.8 THEN 1 END) as medium_confidence,
+                    COUNT(CASE WHEN confidence_score < 0.6 THEN 1 END) as low_confidence
+                FROM concept_entities
+                WHERE user_id = ?
+            """, (user_id,))
+
+            entity_stats = dict(cursor.fetchone())
+
+            # Statistiche relazioni
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as total_relationships,
+                    AVG(confidence_score) as avg_confidence,
+                    MIN(confidence_score) as min_confidence,
+                    MAX(confidence_score) as max_confidence,
+                    COUNT(CASE WHEN confidence_score >= 0.8 THEN 1 END) as high_confidence,
+                    COUNT(CASE WHEN confidence_score >= 0.6 AND confidence_score < 0.8 THEN 1 END) as medium_confidence,
+                    COUNT(CASE WHEN confidence_score < 0.6 THEN 1 END) as low_confidence
+                FROM concept_relationships
+                WHERE user_id = ?
+            """, (user_id,))
+
+            relationship_stats = dict(cursor.fetchone())
+
+            return {
+                'entities': entity_stats,
+                'relationships': relationship_stats,
+                'summary': {
+                    'total_knowledge_items': entity_stats['total_entities'] + relationship_stats['total_relationships'],
+                    'avg_confidence': (entity_stats['avg_confidence'] + relationship_stats['avg_confidence']) / 2,
+                    'high_confidence_ratio': (entity_stats['high_confidence'] + relationship_stats['high_confidence']) /
+                                           max(1, entity_stats['total_entities'] + relationship_stats['total_relationships'])
+                }
+            }
+
+    except Exception as e:
+        print(f"Errore nel calcolo statistiche confidenza: {e}")
+        return {
+            'entities': {'total_entities': 0},
+            'relationships': {'total_relationships': 0},
+            'summary': {'total_knowledge_items': 0, 'avg_confidence': 0.0, 'high_confidence_ratio': 0.0}
         }
