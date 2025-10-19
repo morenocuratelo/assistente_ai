@@ -14,11 +14,11 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file
-COPY requirements.in .
+# Copy Linux-specific requirements files (faster installation, no Windows-only packages)
+COPY requirements-linux.txt ./
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.in
+RUN pip install --no-cache-dir -r requirements-linux.txt
 
 # Copy the application code
 COPY . .

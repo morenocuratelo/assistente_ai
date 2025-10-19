@@ -182,3 +182,7 @@ cython_debug/
 
 # Cache dei modelli AI
 model_cache/
+
+#Documenti
+documenti_da_processare/
+
