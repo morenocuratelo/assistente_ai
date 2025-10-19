@@ -224,6 +224,16 @@ streamlit hello
 # Cache management
 streamlit cache clear
 
+# Gestione completa cache documenti
+python cache_management_example.py --status
+python cache_management_example.py --all
+python cache_management_example.py --vector-store-only
+
+# Pulizia selettiva cache
+python cache_management_example.py --streamlit-only
+python cache_management_example.py --performance-only
+python cache_management_example.py --search-only
+
 # Visualizza informazioni sistema
 streamlit --version
 ```
@@ -381,6 +391,10 @@ python -c "import os; print('REDIS_URL:', os.getenv('REDIS_URL', 'Not set'))"
 
 # Test connessione Ollama
 python -c "import requests; response = requests.get('http://localhost:11434/api/tags'); print('Ollama OK' if response.status_code == 200 else 'Ollama Error')"
+
+# Test cache management system
+python cache_management_example.py --status
+python cache_management_example.py --dry-run
 ```
 
 ---
@@ -468,6 +482,9 @@ docker volume rm $(docker volume ls -q | grep archivista)
 
 # Riavvia servizi
 docker-compose up -d
+
+# Reset completo cache documenti
+python cache_management_example.py --all
 ```
 
 ### Recovery Servizi
@@ -518,6 +535,7 @@ cp -r documenti_da_processare documenti_da_processare.backup.$(date +%Y%m%d_%H%M
 
 - **Documentazione Docker**: `DOCKER_README.md`
 - **Documentazione Celery**: `CELERY_README.md`
+- **Documentazione Cache Management**: `CACHE_MANAGEMENT_README.md`
 - **Configurazione**: `docker-compose.yml`
 - **Dipendenze**: `requirements.in`
 

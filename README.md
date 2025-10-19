@@ -427,6 +427,7 @@ docker-compose exec worker bash
 - **[Framework Errori](error_diagnosis_framework.py)**: Sistema completo diagnosi e gestione errori
 - **[Sistema Retry](retry_framework.py)**: Retry intelligente con backoff esponenziale
 - **[Monitoraggio Avanzato](advanced_monitoring.py)**: Metriche e alerting avanzati
+- **[🧹 Cache Management](CACHE_MANAGEMENT_README.md)**: Sistema completo gestione cache documenti
 
 ### 🐳 **Deployment Produzione**
 - **[Deploy Produzione](PRODUCTION_README.md)**: Guida completa deployment enterprise
@@ -436,6 +437,7 @@ docker-compose exec worker bash
 ### 🔧 **Documentazione Tecnica**
 - **[Guida Celery](CELERY_README.md)**: Configurazione task queue e Redis
 - **[Guida Docker](DOCKER_README.md)**: Deployment containerizzato
+- **[🧹 Guida Cache Management](CACHE_MANAGEMENT_README.md)**: Sistema completo gestione cache
 - **[API Reference](docs/api.md)**: Documentazione API (se disponibile)
 
 ### 📊 **Dashboard e Monitoraggio**
