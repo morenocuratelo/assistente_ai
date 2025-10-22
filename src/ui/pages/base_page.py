@@ -184,6 +184,7 @@ class PageTemplate:
         """Render main page content. Must be implemented by subclasses."""
         raise NotImplementedError("Subclasses must implement render_content()")
 
+
     def render_sidebar_content(self) -> None:
         """Render page-specific sidebar content. Can be overridden."""
         # Default sidebar content
@@ -343,6 +344,10 @@ class PageTemplate:
         # Add recovery suggestion if available
         if error_result.recovery_suggestions:
             self.add_warning_message(f"Suggestion: {error_result.recovery_suggestions}")
+
+
+# Compatibility alias: some modules import BasePage
+BasePage = PageTemplate
 
 
 class StateManager:

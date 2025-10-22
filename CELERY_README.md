@@ -1,6 +1,6 @@
-# Celery + Redis Setup per Archivista AI v2.4.0 (Alpha 2.4)
+# Celery + Redis Setup per Archivista AI v2.5.0 - **Production-Ready**
 
-Questa guida spiega come configurare e utilizzare Celery con Redis per l'elaborazione asincrona delle task in Archivista AI v2.4.0 (Alpha 2.4) - **Phase 3: Intelligent Academic Ecosystem** con architettura multi-pagina avanzata e sistema di gamification.
+Questa guida spiega come configurare e utilizzare Celery con Redis per l'elaborazione asincrona delle task in **Archivista AI v2.5.0** - **Phase 4: Production-Ready** con **centralizzazione completata**, **dashboard unificata** e **deployment enterprise-ready**.
 
 ## 🆕 Architettura Multi-Pagina (v2.4.0+)
 

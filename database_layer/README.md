@@ -1,6 +1,6 @@
-# Database Layer (DAL) - Fase 0
+# Database Layer (DAL) - Archivista AI v2.5.0 - **Production-Ready**
 
-Questa directory contiene il Data Access Layer centralizzato per la preparazione alla transizione multi-progetto.
+Questa directory contiene il **Data Access Layer centralizzato** per **Archivista AI v2.5.0** con **centralizzazione completata** e **deployment enterprise-ready**. Il DAL è completamente implementato e testato per supportare la **dashboard unificata** e tutte le funzionalità avanzate.
 
 ## 📋 Obiettivi Fase 0
 

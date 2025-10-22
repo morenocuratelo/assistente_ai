@@ -775,7 +775,7 @@ class ArchivePage(ListPageTemplate):
                 if storage.get('total_bytes', 0) > 0:
                     st.markdown("**Storage Usage:**")
                     total_mb = storage.get('total_mb', 0)
-                    st.metric("Total Size", f"{total_mb".1f"} MB")
+                    st.metric("Total Size", f"{total_mb:.1f} MB")
 
                     # File type breakdown
                     st.markdown("**File Types:**")
@@ -840,7 +840,7 @@ class ArchivePage(ListPageTemplate):
             if stats:
                 return {
                     'Total Documents': stats.get('processing_stats', {}).get('total_documents', 0),
-                    'Storage Used': f"{stats.get('storage_summary', {}).get('total_mb', 0)".1f"} MB",
+                    'Storage Used': f"{stats.get('storage_summary', {}).get('total_mb', 0):.1f} MB",
                     'Recent Documents': stats.get('recent_documents_count', 0)
                 }
         except Exception:
@@ -982,7 +982,7 @@ class ArchiveSearchPage(PageTemplate):
                 'status': doc.processing_status.value.replace('_', ' ').title(),
                 'size': f"{doc.file_size // 1024 if doc.file_size else 0} KB",
                 'created': doc.created_at.strftime('%Y-%m-%d') if doc.created_at else 'N/A',
-                'confidence': f"{doc_response.ai_confidence".2f"}" if doc_response.ai_confidence else 'N/A'
+                'confidence': f"{doc_response.ai_confidence:.2f}" if doc_response.ai_confidence else 'N/A'
             })
 
         # Table component
@@ -1062,7 +1062,7 @@ class ArchiveAnalyticsPage(PageTemplate):
         with col2:
             completed = processing_stats.get('by_status', {}).get('completed', 0)
             completion_rate = (completed / total_docs * 100) if total_docs > 0 else 0
-            st.metric("✅ Completion Rate", f"{completion_rate".1f"}%")
+            st.metric("✅ Completion Rate", f"{completion_rate:.1f}%")
 
         with col3:
             storage_mb = stats.get('storage_summary', {}).get('total_mb', 0)
@@ -1088,7 +1088,7 @@ class ArchiveAnalyticsPage(PageTemplate):
                 status_data.append({
                     'Status': status.replace('_', ' ').title(),
                     'Count': count,
-                    'Percentage': f"{percentage".1f"}%"
+                'Percentage': f"{percentage:.1f}%"
                 })
 
             # Create DataFrame for table
@@ -1120,7 +1120,7 @@ class ArchiveAnalyticsPage(PageTemplate):
 
                 st.metric("Unique Types", unique_types)
                 st.metric("Processed Files", processed_files)
-                st.metric("Processing Ratio", f"{processed_files/total_files*100".1f"}%")
+                st.metric("Processing Ratio", f"{processed_files/total_files*100:.1f}%")
 
     def _render_recent_activity(self, stats: Dict[str, Any]) -> None:
         """Render recent activity insights."""

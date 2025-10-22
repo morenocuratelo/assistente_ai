@@ -1,6 +1,6 @@
-# 🐳 Docker Deployment per Archivista AI v2.4.0 (Alpha 2.4)
+# 🐳 Docker Deployment per Archivista AI v2.5.0 - **Production-Ready**
 
-Questa guida spiega come eseguire Archivista AI v2.4.0 (Alpha 2.4) - **Phase 3: Intelligent Academic Ecosystem** utilizzando Docker e Docker Compose per un ambiente completamente containerizzato con architettura multi-pagina avanzata e sistema di gamification integrato.
+Questa guida spiega come eseguire **Archivista AI v2.5.0** - **Phase 4: Production-Ready** utilizzando Docker e Docker Compose per un ambiente completamente containerizzato con **centralizzazione completata**, **dashboard unificata** e **deployment enterprise-ready**.
 
 ## 📋 Prerequisiti
 

@@ -219,7 +219,7 @@ def api_client() -> Mock:
     return mock
 
 @pytest.fixture(autouse=True)
-def setup_test_environment() -> Generator[None, None]:
+def setup_test_environment() -> Generator[None, None, None]:
     """Setup automatico per tutti i test."""
     # Set environment variables for testing
     original_env = os.environ.copy()
@@ -227,7 +227,6 @@ def setup_test_environment() -> Generator[None, None]:
     os.environ.update({
         'ENVIRONMENT': 'test',
         'DEBUG': 'true',
-        'DATABASE_URL': 'sqlite:///:memory:',
         'AI_MODEL': 'test-model'
     })
 
@@ -371,6 +370,9 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     config.addinivalue_line(
         "markers", "ui: mark test as UI related"
+    )
+    config.addinivalue_line(
+        "markers", "asyncio: mark tests that use asyncio"
     )
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

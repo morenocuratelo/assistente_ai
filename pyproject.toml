@@ -74,6 +74,21 @@ markers = [
     "database: Database related tests",
     "ai: AI/ML related tests",
     "ui: UI related tests",
+    "performance: Performance and benchmarking tests",
+    "asyncio: Async tests",
+    "security: Security and vulnerability tests",
+    "browser: Browser compatibility tests",
+    "mobile: Mobile responsiveness tests",
+    "accessibility: Accessibility compliance tests",
+    "pwa: Progressive Web App tests",
+    "load: Load testing",
+    "stress: Stress testing",
+    "scalability: Scalability testing",
+    "endurance: Endurance testing",
+    "uat: User Acceptance Testing",
+    "ux: User Experience validation",
+    "cross_platform: Cross-platform compatibility",
+    "data_validation: Data validation and integrity",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
@@ -99,9 +114,9 @@ exclude_lines = [
     "raise AssertionError",
     "raise NotImplementedError",
     "if 0:",
-    "if __name__ == .__main__.:",
-    "class .*\bProtocol\):",
-    "@(abc\.)?abstractmethod",
+    "if __name__ == '__main__':",
+    "class .*Protocol:",
+    "abstractmethod",
 ]
 
 [tool.coverage.html]

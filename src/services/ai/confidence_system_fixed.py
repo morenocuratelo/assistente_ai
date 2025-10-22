@@ -225,24 +225,32 @@ class ConfidenceCalculator:
             reliability = 0.5  # Base reliability
 
             # Boost for processed documents
-            if doc.processing_status.value == 'completed':
+            if hasattr(doc, 'processing_status') and doc.processing_status and doc.processing_status.value == 'completed':
                 reliability += 0.2
 
             # Boost for documents with good metadata
-            if doc.title:
+            if hasattr(doc, 'title') and doc.title:
                 reliability += 0.1
-            if doc.keywords:
+            if hasattr(doc, 'keywords') and doc.keywords:
                 reliability += 0.1
-            if doc.content_hash:
+            if hasattr(doc, 'content_hash') and doc.content_hash:
                 reliability += 0.1
 
             # Boost for recent documents
-            if doc.created_at:
-                days_old = (datetime.utcnow() - doc.created_at).days
-                if days_old < 30:
-                    reliability += 0.1
-                elif days_old < 365:
-                    reliability += 0.05
+            if hasattr(doc, 'created_at') and doc.created_at:
+                try:
+                    if isinstance(doc.created_at, str):
+                        created_at = datetime.fromisoformat(doc.created_at)
+                    else:
+                        created_at = doc.created_at
+                    days_old = (datetime.utcnow() - created_at).days
+                    if days_old < 30:
+                        reliability += 0.1
+                    elif days_old < 365:
+                        reliability += 0.05
+                except (ValueError, TypeError):
+                    # Invalid date format, skip temporal boost
+                    pass
 
             total_reliability += min(reliability, 1.0)
 

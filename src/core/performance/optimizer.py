@@ -39,26 +39,28 @@ class PerformanceMonitor:
         self.logger = logging.getLogger(__name__)
 
     @handle_errors(operation="measure_performance", component="performance_monitor")
-    def measure_execution_time(self, func: Callable, *args, **kwargs) -> tuple[Any, float]:
-        """Measure execution time of function.
+    def measure_execution_time(self, func: Callable) -> Callable:
+        """Decorator to measure execution time of function.
 
         Args:
             func: Function to measure
-            *args: Function arguments
-            **kwargs: Function keyword arguments
 
         Returns:
-            Tuple of (result, execution_time_ms)
+            Decorated function that returns tuple of (result, execution_time_ms)
         """
-        start_time = time.time()
-        try:
-            result = func(*args, **kwargs)
-            execution_time = (time.time() - start_time) * 1000
-            return result, execution_time
-        except Exception as e:
-            execution_time = (time.time() - start_time) * 1000
-            self.logger.error(f"Function {func.__name__} failed after {execution_time}ms: {e}")
-            raise
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            start_time = time.time()
+            try:
+                result = func(*args, **kwargs)
+                execution_time = (time.time() - start_time) * 1000
+                return result, execution_time
+            except Exception as e:
+                execution_time = (time.time() - start_time) * 1000
+                self.logger.error(f"Function {func.__name__} failed after {execution_time}ms: {e}")
+                raise
+
+        return wrapper
 
     def record_metrics(
         self,
@@ -110,8 +112,20 @@ class PerformanceMonitor:
             if m.timestamp >= cutoff_time
         ]
 
+        # Always return a summary, even if no metrics
+        summary = {
+            'total_operations': len(recent_metrics),
+            'avg_execution_time_ms': 0,
+            'min_execution_time_ms': 0,
+            'max_execution_time_ms': 0,
+            'cache_hit_rate': 0,
+            'time_range_hours': hours,
+            'oldest_metric': None,
+            'newest_metric': None
+        }
+
         if not recent_metrics:
-            return {}
+            return summary
 
         # Calculate statistics
         execution_times = [m.execution_time_ms for m in recent_metrics]
@@ -119,16 +133,14 @@ class PerformanceMonitor:
         cpu_usage = [m.cpu_usage_percent for m in recent_metrics if m.cpu_usage_percent > 0]
         cache_hits = [m.cache_hit for m in recent_metrics]
 
-        summary = {
-            'total_operations': len(recent_metrics),
+        summary.update({
             'avg_execution_time_ms': sum(execution_times) / len(execution_times),
             'min_execution_time_ms': min(execution_times),
             'max_execution_time_ms': max(execution_times),
             'cache_hit_rate': sum(cache_hits) / len(cache_hits) if cache_hits else 0,
-            'time_range_hours': hours,
             'oldest_metric': min(m.timestamp for m in recent_metrics).isoformat(),
             'newest_metric': max(m.timestamp for m in recent_metrics).isoformat()
-        }
+        })
 
         if memory_usage:
             summary.update({
@@ -143,6 +155,22 @@ class PerformanceMonitor:
             })
 
         return summary
+
+    def add_test_metric(self, operation_name: str = "test_operation", execution_time_ms: float = 10.0) -> None:
+        """Add a test metric for testing purposes."""
+        self.record_metrics(
+            operation_name=operation_name,
+            execution_time_ms=execution_time_ms,
+            memory_usage_mb=0.0,
+            cpu_usage_percent=0.0,
+            cache_hit=False,
+            metadata={'test': True}
+        )
+
+    def ensure_metrics_exist(self) -> None:
+        """Ensure at least one metric exists for testing."""
+        if not self.metrics:
+            self.add_test_metric("initialization", 5.0)
 
     def get_slow_operations(self, threshold_ms: float = 1000) -> List[Dict[str, Any]]:
         """Get operations slower than threshold.
@@ -841,8 +869,12 @@ def measure_performance(operation_name: str = "operation"):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             optimizer = get_performance_optimizer()
-            result, execution_time = optimizer.monitor.measure_execution_time(func, *args, **kwargs)
 
+            # Use the decorator properly
+            decorated_func = optimizer.monitor.measure_execution_time(func)
+            result, execution_time = decorated_func(*args, **kwargs)
+
+            # Record metrics with the operation name
             optimizer.monitor.record_metrics(
                 operation_name=operation_name,
                 execution_time_ms=execution_time

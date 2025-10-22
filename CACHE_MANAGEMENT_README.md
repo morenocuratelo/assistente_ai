@@ -1,6 +1,6 @@
-# Document Cache Management System
+# 🧹 Document Cache Management System - Archivista AI v2.5.0
 
-A comprehensive cache management system for resetting and cleaning all document-related caches in the assistente_ai application.
+A comprehensive cache management system for resetting and cleaning all document-related caches in the **Archivista AI v2.5.0** application with **production-ready** features and **enterprise-grade** performance optimization.
 
 ## Overview
 

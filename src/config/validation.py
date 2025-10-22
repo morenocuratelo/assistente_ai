@@ -123,7 +123,7 @@ class ConfigValidator:
             errors.append("Deve essere una stringa")
             return errors
 
-        valid_environments = ['development', 'testing', 'staging', 'production']
+        valid_environments = ['development', 'test', 'staging', 'production']
         if value not in valid_environments:
             errors.append(f"Deve essere uno di: {', '.join(valid_environments)}")
 
@@ -559,7 +559,7 @@ class ConfigValidator:
             return errors
 
         if len(value) < 32:
-            errors.append("Dovrebbe essere almeno 32 caratteri per sicurezza")
+            errors.append(f"Dovrebbe essere almeno 32 caratteri per sicurezza (attuale: {len(value)})")
 
         if len(value) > 256:
             errors.append("Non dovrebbe essere maggiore di 256 caratteri")

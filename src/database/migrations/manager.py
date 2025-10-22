@@ -12,7 +12,7 @@ from datetime import datetime
 from dataclasses import dataclass
 from contextlib import contextmanager
 
-from ..models.base import Project, User, Document
+# Models are imported dynamically to avoid circular imports
 
 
 @dataclass
@@ -98,6 +98,12 @@ class MigrationManager:
                     f"SELECT version FROM {self.migrations_table} WHERE success = 1 ORDER BY version"
                 )
                 return [row[0] for row in cursor.fetchall()]
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e):
+                # Table doesn't exist yet, return empty list
+                return []
+            self.logger.error(f"Errore recupero migrazioni applicate: {e}")
+            return []
         except Exception as e:
             self.logger.error(f"Errore recupero migrazioni applicate: {e}")
             return []
@@ -117,6 +123,18 @@ class MigrationManager:
                 migration.pre_migration()
 
             with self._get_connection() as conn:
+                # Crea tabella migrazioni se non esiste
+                conn.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.migrations_table} (
+                        version TEXT PRIMARY KEY,
+                        description TEXT NOT NULL,
+                        applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        execution_time_ms INTEGER,
+                        success BOOLEAN DEFAULT 1,
+                        error_message TEXT
+                    )
+                """)
+
                 # Esegui SQL migrazione
                 cursor = conn.execute(migration.up_sql)
 
@@ -163,6 +181,18 @@ class MigrationManager:
             # Registra fallimento
             try:
                 with self._get_connection() as conn:
+                    # Crea tabella migrazioni se non esiste
+                    conn.execute(f"""
+                        CREATE TABLE IF NOT EXISTS {self.migrations_table} (
+                            version TEXT PRIMARY KEY,
+                            description TEXT NOT NULL,
+                            applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            execution_time_ms INTEGER,
+                            success BOOLEAN DEFAULT 1,
+                            error_message TEXT
+                        )
+                    """)
+
                     conn.execute(f"""
                         INSERT OR REPLACE INTO {self.migrations_table}
                         (version, description, execution_time_ms, success, error_message)
@@ -261,16 +291,22 @@ class MigrationManager:
             ),
             MigrationStep(
                 version="002",
-                description="Add indexes for performance optimization",
+                description="Add password_hash column to users table",
                 up_sql=self._get_migration_002_up(),
                 down_sql=self._get_migration_002_down()
             ),
             MigrationStep(
                 version="003",
-                description="Create default project for existing users",
+                description="Add indexes for performance optimization",
                 up_sql=self._get_migration_003_up(),
-                down_sql=self._get_migration_003_down(),
-                post_migration=self._post_migration_003
+                down_sql=self._get_migration_003_down()
+            ),
+            MigrationStep(
+                version="004",
+                description="Create default project for existing users",
+                up_sql=self._get_migration_004_up(),
+                down_sql=self._get_migration_004_down(),
+                post_migration=self._post_migration_004
             )
         ]
 
@@ -292,34 +328,7 @@ class MigrationManager:
             settings JSON,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-
-        -- Crea tabella associazione utenti-progetti
-        CREATE TABLE IF NOT EXISTS user_projects (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER REFERENCES users(id),
-            project_id TEXT REFERENCES projects(id),
-            role VARCHAR(50) DEFAULT 'member',
-            joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, project_id)
-        );
-
-        -- Aggiungi colonna project_id alle tabelle esistenti
-        ALTER TABLE users ADD COLUMN project_id TEXT;
-        ALTER TABLE documents ADD COLUMN project_id TEXT;
-        ALTER TABLE courses ADD COLUMN project_id TEXT;
-        ALTER TABLE tasks ADD COLUMN project_id TEXT;
-        ALTER TABLE chat_sessions ADD COLUMN project_id TEXT;
-        ALTER TABLE concept_entities ADD COLUMN project_id TEXT;
-        ALTER TABLE user_xp ADD COLUMN project_id TEXT;
-        ALTER TABLE user_achievements ADD COLUMN project_id TEXT;
-        ALTER TABLE study_sessions ADD COLUMN project_id TEXT;
-        ALTER TABLE user_activity ADD COLUMN project_id TEXT;
-        ALTER TABLE document_processing_status ADD COLUMN project_id TEXT;
-        ALTER TABLE processing_error_log ADD COLUMN project_id TEXT;
-        ALTER TABLE processing_metrics ADD COLUMN project_id TEXT;
-        ALTER TABLE quarantine_files ADD COLUMN project_id TEXT;
-        ALTER TABLE bayesian_evidence ADD COLUMN project_id TEXT;
+        )
         """
 
     def _get_migration_001_down(self) -> str:
@@ -348,7 +357,31 @@ class MigrationManager:
         """
 
     def _get_migration_002_up(self) -> str:
-        """SQL migrazione 002 - UP (indici performance)."""
+        """SQL migrazione 002 - UP (password_hash column)."""
+        return """
+        -- Add password_hash column to users table
+        ALTER TABLE users ADD COLUMN password_hash TEXT;
+
+        -- Create index on username for performance
+        CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
+        -- Create index on email for performance
+        CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+        """
+
+    def _get_migration_002_down(self) -> str:
+        """SQL migrazione 002 - DOWN (rimuovi password_hash column)."""
+        return """
+        -- Remove password_hash column (data loss!)
+        ALTER TABLE users DROP COLUMN IF EXISTS password_hash;
+
+        -- Remove indexes
+        DROP INDEX IF EXISTS idx_users_username;
+        DROP INDEX IF EXISTS idx_users_email;
+        """
+
+    def _get_migration_003_up(self) -> str:
+        """SQL migrazione 003 - UP (indici performance)."""
         return """
         -- Indici per documenti
         CREATE INDEX IF NOT EXISTS idx_documents_project_id ON documents(project_id);
@@ -392,8 +425,8 @@ class MigrationManager:
         CREATE INDEX IF NOT EXISTS idx_processing_status_file ON document_processing_status(file_name);
         """
 
-    def _get_migration_002_down(self) -> str:
-        """SQL migrazione 002 - DOWN (rimuovi indici)."""
+    def _get_migration_003_down(self) -> str:
+        """SQL migrazione 003 - DOWN (rimuovi indici)."""
         return """
         -- Rimuovi tutti gli indici creati
         DROP INDEX IF EXISTS idx_documents_project_id;
@@ -423,20 +456,34 @@ class MigrationManager:
         DROP INDEX IF EXISTS idx_processing_status_file;
         """
 
-    def _get_migration_003_up(self) -> str:
-        """SQL migrazione 003 - UP (crea progetto default)."""
+    def _get_migration_004_up(self) -> str:
+        """SQL migrazione 004 - UP (crea progetto default)."""
         return """
         -- Crea progetto default "Wiki Globale" per tutti gli utenti esistenti
         INSERT OR IGNORE INTO projects (id, name, description, is_default)
         VALUES ('global-wiki', 'Wiki Globale', 'Progetto globale per tutti gli utenti', 1);
         """
 
-    def _get_migration_003_down(self) -> str:
-        """SQL migrazione 003 - DOWN."""
+    def _get_migration_004_down(self) -> str:
+        """SQL migrazione 004 - DOWN."""
         return """
         -- Rimuovi progetto default
         DELETE FROM projects WHERE id = 'global-wiki';
         """
+
+    def _post_migration_004(self) -> None:
+        """Post-migration hook per migrazione 004."""
+        self.logger.info("Migrazione 004 completata - Progetto default creato")
+
+        # Verifica progetto default esistente
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT COUNT(*) FROM projects WHERE is_default = 1"
+            )
+            count = cursor.fetchone()[0]
+
+            if count == 0:
+                raise Exception("Progetto default non creato correttamente")
 
     def _pre_migration_001(self) -> None:
         """Pre-migration hook per migrazione 001."""

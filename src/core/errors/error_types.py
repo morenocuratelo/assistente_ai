@@ -228,8 +228,7 @@ class FileSystemError(ArchivistaError):
                 timestamp=datetime.utcnow(),
                 metadata={'file_path': file_path}
             ),
-            is_retryable=True,
-            recovery_suggestions="Verifica permessi file e spazio disponibile"
+            is_retryable=True
         )
         self.file_path = file_path
 
@@ -241,9 +240,7 @@ class FileNotFoundError(FileSystemError):
         super().__init__(
             f"File non trovato: {file_path}",
             file_path,
-            operation="read",
-            severity=ErrorSeverity.MEDIUM,
-            recovery_suggestions="Verifica percorso file e presenza file"
+            operation="read"
         )
 
 
@@ -355,7 +352,8 @@ class AuthenticationError(ArchivistaError):
         self,
         message: str = "Errore autenticazione",
         username: Optional[str] = None,
-        context: Optional[ErrorContext] = None
+        context: Optional[ErrorContext] = None,
+        recovery_suggestions: Optional[str] = None
     ):
         super().__init__(
             message,
@@ -370,7 +368,7 @@ class AuthenticationError(ArchivistaError):
                 metadata={'username': username} if username else {}
             ),
             is_retryable=False,
-            recovery_suggestions="Verifica credenziali e riprova"
+            recovery_suggestions=recovery_suggestions or "Verifica credenziali e riprova"
         )
         self.username = username
 
@@ -453,7 +451,7 @@ class ValidationError(ArchivistaError):
         self,
         message: str,
         field: str,
-        value: Any,
+        value: Any = None,
         context: Optional[ErrorContext] = None
     ):
         super().__init__(
@@ -538,8 +536,7 @@ class ProcessingError(ArchivistaError):
                 timestamp=datetime.utcnow(),
                 metadata={'file_path': file_path, 'stage': stage}
             ),
-            is_retryable=True,
-            recovery_suggestions="Verifica formato file e riprova"
+            is_retryable=True
         )
         self.file_path = file_path
         self.stage = stage
@@ -552,8 +549,7 @@ class DocumentProcessingError(ProcessingError):
         super().__init__(
             message,
             file_path=file_path,
-            stage=stage,
-            recovery_suggestions="Verifica integrità file e formato supportato"
+            stage=stage
         )
 
 
