@@ -19,11 +19,11 @@ import time
 from datetime import datetime
 
 # Import UX components for improved user experience
-from ux_components import show_contextual_help, show_success_message, show_error_message
+from scripts.operations.ux_components import show_contextual_help, show_success_message, show_error_message
 # Import feedback system for enhanced messaging
-from feedback_system import show_enhanced_message, show_success_with_actions, handle_operation_error, notification_manager
+from scripts.operations.feedback_system import show_enhanced_message, show_success_with_actions, handle_operation_error, notification_manager
 # Import smart suggestions for behavior tracking
-from smart_suggestions import record_user_action, doc_type_detector
+from scripts.operations.smart_suggestions import record_user_action, doc_type_detector
 
 # --- CONFIGURAZIONE ---
 DOCS_TO_PROCESS_DIR = "documenti_da_processare"
@@ -239,7 +239,7 @@ def render_creation_sidebar():
 
     # Statistiche documenti esistenti
     try:
-        from file_utils import get_papers_dataframe
+        from scripts.utilities.file_utils import get_papers_dataframe
         papers_df = get_papers_dataframe()
 
         if not papers_df.empty:

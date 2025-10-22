@@ -19,7 +19,7 @@ Funzionalità:
 
 import streamlit as st
 import pandas as pd
-from file_utils import get_papers_dataframe, update_paper_metadata
+from scripts.utilities.file_utils import get_papers_dataframe, update_paper_metadata
 import os
 import time
 

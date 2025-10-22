@@ -19,11 +19,11 @@ Tab Funzionali:
 
 import streamlit as st
 import pandas as pd
-from file_utils import get_archive_tree, get_papers_dataframe
+from scripts.utilities.file_utils import get_archive_tree, get_papers_dataframe
 import os
 
 # Import UX components for improved user experience
-from ux_components import show_contextual_help, create_labeled_icon, show_success_message, show_error_message
+from scripts.operations.ux_components import show_contextual_help, create_labeled_icon, show_success_message, show_error_message
 
 def main():
     st.set_page_config(page_title="🗂️ Archivio - Archivista AI", page_icon="🗂️", layout="wide")

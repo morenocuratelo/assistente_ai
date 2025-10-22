@@ -2,13 +2,13 @@ import streamlit as st
 import pandas as pd
 import json
 from datetime import datetime, date
-from file_utils import (
+from scripts.utilities.file_utils import (
     get_user_courses, create_course, update_course, delete_course,
     get_course_lectures, create_lecture, update_lecture,
     get_user_tasks, create_task, update_task, delete_task,
     get_papers_dataframe, get_archive_tree
 )
-from knowledge_structure import KNOWLEDGE_BASE_STRUCTURE
+from tools.knowledge_structure import KNOWLEDGE_BASE_STRUCTURE
 
 # --- STILE CSS ---
 st.markdown("""

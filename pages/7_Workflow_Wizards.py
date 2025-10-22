@@ -10,7 +10,7 @@ This page provides access to interactive wizards for:
 """
 
 import streamlit as st
-from workflow_wizards import show_workflow_wizards_hub
+from scripts.operations.workflow_wizards import show_workflow_wizards_hub
 
 def main():
     """Main function for the Workflow Wizards page."""

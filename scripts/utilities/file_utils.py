@@ -3,7 +3,7 @@ import sqlite3
 import os
 import pandas as pd
 import json
-from knowledge_structure import (
+from tools.knowledge_structure import (
     KNOWLEDGE_BASE_STRUCTURE,
     BayesianKnowledgeEntity,
     BayesianKnowledgeRelationship,

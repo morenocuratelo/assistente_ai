@@ -11,7 +11,7 @@ This page provides:
 """
 
 import streamlit as st
-from smart_suggestions import (
+from scripts.operations.smart_suggestions import (
     analyze_and_show_insights,
     show_smart_suggestions,
     record_user_action,

@@ -3,13 +3,13 @@ import pandas as pd
 import json
 import networkx as nx
 from streamlit.components.v1 import html
-from file_utils import get_user_knowledge_graph, get_entity_neighbors, get_entities_by_confidence, get_relationships_by_confidence, get_confidence_statistics
+from scripts.utilities.file_utils import get_user_knowledge_graph, get_entity_neighbors, get_entities_by_confidence, get_relationships_by_confidence, get_confidence_statistics
 # Import delle funzioni Bayesian per la visualizzazione della confidenza
-from knowledge_structure import (
+from tools.knowledge_structure import (
     get_confidence_color,
     get_confidence_label
 )
-from bayesian_inference_engine import create_inference_engine
+from tools.bayesian_inference_engine import create_inference_engine
 
 # --- HELPER FUNCTIONS FOR BAYESIAN VISUALIZATION ---
 
@@ -131,7 +131,7 @@ if selected_entity and selected_entity != "Nessuna selezione (grafo completo)":
     st.sidebar.subheader("📋 Cronologia Prove")
     selected_entity_data = next((e for e in graph_data['entities'] if e['entity_name'] == selected_entity), None)
     if selected_entity_data:
-        from file_utils import get_entity_evidence_history
+        from scripts.utilities.file_utils import get_entity_evidence_history
         evidence_history = get_entity_evidence_history(selected_entity_data['id'], limit=5)
 
         if evidence_history:

@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 # Import delle nostre strutture dati Bayesian
-from knowledge_structure import (
+from tools.knowledge_structure import (
     BayesianKnowledgeEntity,
     BayesianKnowledgeRelationship,
     EvidenceRecord,
@@ -26,7 +26,7 @@ from knowledge_structure import (
 )
 
 # Import delle funzioni database
-from file_utils import (
+from scripts.utilities.file_utils import (
     create_bayesian_entity,
     create_bayesian_relationship,
     update_entity_confidence,
@@ -186,7 +186,7 @@ class BayesianInferenceEngine:
             # Trova o crea l'entità
             if request.entity_id:
                 # Verifica che l'entità esista
-                from file_utils import db_connect
+                from scripts.utilities.file_utils import db_connect
                 with db_connect() as conn:
                     cursor = conn.cursor()
                     cursor.execute("SELECT id FROM concept_entities WHERE id = ? AND user_id = ?",
@@ -304,7 +304,7 @@ class BayesianInferenceEngine:
     def _propagate_confidence_to_relationships(self, entity_id: int):
         """Propaga la confidenza dalle entità alle loro relazioni."""
         try:
-            from file_utils import db_connect
+            from scripts.utilities.file_utils import db_connect
 
             with db_connect() as conn:
                 cursor = conn.cursor()
@@ -592,7 +592,7 @@ class BayesianInferenceEngine:
                 evidence = get_relationship_evidence_history(relationship_id, limit)
             else:
                 # Se non specificato, recupera evidenza generale recente
-                from file_utils import db_connect
+                from scripts.utilities.file_utils import db_connect
                 with db_connect() as conn:
                     cursor = conn.cursor()
                     cursor.execute("""

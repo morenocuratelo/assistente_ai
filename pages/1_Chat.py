@@ -5,7 +5,7 @@ from datetime import datetime
 
 # Import delle funzionalità necessarie
 from config import get_chat_llm
-from file_utils import (
+from scripts.utilities.file_utils import (
     get_papers_dataframe,
     get_user_chat_sessions,
     create_chat_session,
@@ -15,13 +15,13 @@ from file_utils import (
     get_user_chat_history,
     get_user_memory_summary
 )
-from file_utils import get_archive_tree  # Aggiunto per la navigazione dei documenti
-import knowledge_structure
+from scripts.utilities.file_utils import get_archive_tree  # Aggiunto per la navigazione dei documenti
+from tools.knowledge_structure import KNOWLEDGE_BASE_STRUCTURE
 
 # Import UX components for improved user experience
-from ux_components import show_welcome_modal, show_guided_tour, show_contextual_help, get_smart_suggestions, init_ux_session
+from scripts.operations.ux_components import show_welcome_modal, show_guided_tour, show_contextual_help, get_smart_suggestions, init_ux_session
 # Import smart suggestions for behavior tracking
-from smart_suggestions import record_user_action
+from scripts.operations.smart_suggestions import record_user_action
 
 # --- CONFIGURAZIONE CHAT ---
 CHAT_MODEL = get_chat_llm()

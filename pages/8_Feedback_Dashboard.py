@@ -10,7 +10,7 @@ This page provides:
 """
 
 import streamlit as st
-from feedback_system import (
+from scripts.operations.feedback_system import (
     show_operation_status_dashboard,
     notification_manager,
     operation_tracker,

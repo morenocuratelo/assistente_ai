@@ -3,7 +3,7 @@
  Gestisce l'autenticazione degli utenti con Streamlit.
 """
 import streamlit as st
-from file_utils import create_user, authenticate_user
+from scripts.utilities.file_utils import create_user, authenticate_user
 
 def main():
     st.set_page_config(page_title="🔐 Login - Archivista AI", page_icon="🔐", layout="centered")

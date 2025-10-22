@@ -204,7 +204,7 @@ class ModalLoginForm(BaseComponent):
     def _authenticate_user(self, username: str, password: str) -> bool:
         """Autentica utente (simulazione)."""
         try:
-            from file_utils import authenticate_user
+            from scripts.utilities.file_utils import authenticate_user
             user = authenticate_user(username, password)
             if user:
                 st.session_state.user_id = user['id']
@@ -226,7 +226,7 @@ class ModalLoginForm(BaseComponent):
                 st.error("❌ Le password non corrispondono")
                 return False
 
-            from file_utils import create_user
+            from scripts.utilities.file_utils import create_user
             create_user(username, password)
 
             # Auto-login dopo registrazione
